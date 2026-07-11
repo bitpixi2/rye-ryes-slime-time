@@ -12,6 +12,8 @@
     "vite": "^7.0.0"
   },
   "dependencies": {
+    "matter-js": "^0.20.0",
+    "three": "^0.185.1",
     "webgl-fluid-enhanced": "0.8.0"
   }
 }
