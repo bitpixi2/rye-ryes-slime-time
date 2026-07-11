@@ -24,8 +24,11 @@ exitPlayButton.inert = true;
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const TAU = Math.PI * 2;
-const SLIME_TOUCH_LAG_MS = 260;
-const SLIME_MAX_STEP_PER_FRAME = 5.2;
+const MIX_TYPES = ['sprinkles', 'stars', 'beads', 'glitter'];
+const MIX_LABELS = { sprinkles: 'Candy Sprinkles', stars: 'Jelly Stars', beads: 'Bubble Beads', glitter: 'Cosmic Glitter' };
+const MAX_MIX_BATCHES = 5;
+const SLIME_TOUCH_LAG_MS = 315;
+const SLIME_MAX_STEP_PER_FRAME = 4.2;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
@@ -72,7 +75,7 @@ const state = {
   playMode: false,
   step: 'base',
   theme: 'berry',
-  mixins: new Set(),
+  mixins: new Map(MIX_TYPES.map((type) => [type, 0])),
   muted: false,
   activePointers: new Map(),
   settlingPointers: [],
@@ -86,15 +89,13 @@ const state = {
   toppingDpr: 1,
   time: 0,
   lastTimestamp: 0,
+  lastToppingRenderTime: 0,
   hintTimer: 0,
 };
 
 try {
   const saved = JSON.parse(localStorage.getItem('rye-ryes-slime-time-recipe') || '{}');
   if (themes[saved.theme]) state.theme = saved.theme;
-  if (Array.isArray(saved.mixins)) {
-    state.mixins = new Set(saved.mixins.filter((item) => ['sprinkles', 'stars', 'beads', 'glitter'].includes(item)));
-  }
   state.muted = saved.muted === true;
 } catch {
   // Storage is optional; the simulation must remain playable without it.
@@ -272,22 +273,25 @@ class ToppingLayer {
     this.context = context;
     this.particles = [];
     this.palette = themes[state.theme].palette;
-    this.spawnBubbles();
+    this.spawnBaseTexture();
   }
 
   resize() {
     const bounds = toppingCanvas.getBoundingClientRect();
     state.toppingWidth = Math.max(1, bounds.width);
     state.toppingHeight = Math.max(1, bounds.height);
-    state.toppingDpr = Math.min(devicePixelRatio || 1, 2);
+    state.toppingDpr = Math.min(devicePixelRatio || 1, isMobile ? 1.35 : 1.6);
     toppingCanvas.width = Math.round(state.toppingWidth * state.toppingDpr);
     toppingCanvas.height = Math.round(state.toppingHeight * state.toppingDpr);
   }
 
-  spawnBubbles() {
-    this.particles = this.particles.filter((particle) => particle.type !== 'bubble');
-    for (let index = 0; index < (isMobile ? 18 : 28); index += 1) {
+  spawnBaseTexture() {
+    this.particles = this.particles.filter((particle) => particle.type !== 'bubble' && particle.type !== 'rice');
+    for (let index = 0; index < (isMobile ? 11 : 16); index += 1) {
       this.particles.push(this.makeParticle('bubble'));
+    }
+    for (let index = 0; index < (isMobile ? 58 : 84); index += 1) {
+      this.particles.push(this.makeParticle('rice'));
     }
   }
 
@@ -307,19 +311,29 @@ class ToppingLayer {
   }
 
   countFor(type) {
-    const mobileCounts = { sprinkles: 54, stars: 14, beads: 28, glitter: 54 };
-    const desktopCounts = { sprinkles: 82, stars: 20, beads: 42, glitter: 82 };
+    const mobileCounts = { sprinkles: 30, stars: 8, beads: 16, glitter: 32 };
+    const desktopCounts = { sprinkles: 46, stars: 12, beads: 24, glitter: 48 };
     return (isMobile ? mobileCounts : desktopCounts)[type] || 20;
   }
 
   syncMixins() {
     this.palette = themes[state.theme].palette;
-    this.particles = this.particles.filter((particle) => particle.type === 'bubble' || state.mixins.has(particle.type));
-    for (const type of state.mixins) {
-      const existing = this.particles.filter((particle) => particle.type === type).length;
-      const desired = this.countFor(type);
-      for (let index = existing; index < desired; index += 1) this.particles.push(this.makeParticle(type));
+    const baseTexture = this.particles.filter((particle) => particle.type === 'bubble' || particle.type === 'rice');
+    const syncedParticles = [...baseTexture];
+    for (const type of MIX_TYPES) {
+      const desired = this.countFor(type) * (state.mixins.get(type) || 0);
+      const existing = this.particles.filter((particle) => particle.type === type).slice(0, desired);
+      syncedParticles.push(...existing);
+      for (let index = existing.length; index < desired; index += 1) syncedParticles.push(this.makeParticle(type));
     }
+    this.particles = syncedParticles;
+  }
+
+  addBatch(type) {
+    const batch = [];
+    for (let index = 0; index < this.countFor(type); index += 1) batch.push(this.makeParticle(type));
+    this.particles.push(...batch);
+    return batch;
   }
 
   stir(x, y, dx, dy, force = 1) {
@@ -340,11 +354,10 @@ class ToppingLayer {
     }
   }
 
-  burst(type) {
+  burst(type, particles = this.particles.filter((item) => item.type === type)) {
     const centerX = randomBetween(0.25, 0.75);
     const centerY = randomBetween(0.2, 0.8);
-    for (const particle of this.particles.filter((item) => item.type === type)) {
-      if (Math.random() > 0.65) continue;
+    for (const particle of particles) {
       const angle = Math.random() * TAU;
       particle.x = clamp(centerX + Math.cos(angle) * randomBetween(0.01, 0.16), 0.02, 0.98);
       particle.y = clamp(centerY + Math.sin(angle) * randomBetween(0.01, 0.16), 0.02, 0.98);
@@ -400,7 +413,7 @@ class ToppingLayer {
       context.save();
       context.translate(x, y);
       context.rotate(particle.angle);
-      context.globalAlpha = particle.type === 'bubble' ? 0.34 : 0.83;
+      context.globalAlpha = particle.type === 'bubble' ? 0.3 : particle.type === 'rice' ? 0.62 : 0.83;
 
       if (particle.type === 'bubble') {
         const radius = (3.2 + particle.size * 3.4) * unit;
@@ -413,6 +426,26 @@ class ToppingLayer {
         context.beginPath();
         context.arc(0, 0, radius, 0, TAU);
         context.fill();
+      } else if (particle.type === 'rice') {
+        const length = (5.5 + particle.size * 5.4) * unit;
+        const thickness = (2.4 + particle.size * 1.45) * unit;
+        context.globalAlpha = 0.32;
+        context.fillStyle = '#2d153a';
+        context.beginPath();
+        context.roundRect(-length / 2, -thickness / 2 + 1.5 * unit, length, thickness, thickness);
+        context.fill();
+        context.globalAlpha = 0.68;
+        context.fillStyle = '#f4e9fb';
+        context.beginPath();
+        context.roundRect(-length / 2, -thickness / 2, length, thickness, thickness);
+        context.fill();
+        context.globalAlpha = 0.72;
+        context.strokeStyle = 'rgba(255,255,255,.72)';
+        context.lineWidth = Math.max(0.55, 0.7 * unit);
+        context.beginPath();
+        context.moveTo(-length * 0.28, -thickness * 0.18);
+        context.quadraticCurveTo(0, -thickness * 0.42, length * 0.28, -thickness * 0.12);
+        context.stroke();
       } else if (particle.type === 'sprinkles') {
         const length = (8 + particle.size * 7) * unit;
         const thickness = (2.3 + particle.size * 1.5) * unit;
@@ -490,13 +523,13 @@ function fluidConfig() {
   return {
     simResolution: isMobile ? 128 : 196,
     dyeResolution: isMobile ? 512 : 1024,
-    densityDissipation: 0.16,
-    velocityDissipation: 4.8,
-    pressure: 0.95,
-    pressureIterations: isMobile ? 30 : 38,
-    curl: prefersReducedMotion ? 1 : 3.5,
-    splatRadius: isMobile ? 3.6 : 3,
-    splatForce: isMobile ? 1600 : 1900,
+    densityDissipation: 0.1,
+    velocityDissipation: 6.4,
+    pressure: 0.96,
+    pressureIterations: isMobile ? 34 : 42,
+    curl: prefersReducedMotion ? 0.7 : 2.2,
+    splatRadius: isMobile ? 4.2 : 3.6,
+    splatForce: isMobile ? 1300 : 1550,
     shading: true,
     colorful: true,
     colorUpdateSpeed: 0.45,
@@ -504,7 +537,7 @@ function fluidConfig() {
     hover: false,
     backgroundColor: theme.base,
     transparent: false,
-    brightness: 0.68,
+    brightness: 0.62,
     bloom: false,
     sunrays: false,
   };
@@ -587,7 +620,7 @@ function seedSlime(amount = 10) {
   scheduleSeed(() => {
     fluid?.setConfig({ splatRadius: isMobile ? 2.6 : 2.2 });
     addSwirlGrid(state.playMode ? 12 : 10, 0.13);
-    scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 3.6 : 3 }), 90);
+    scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 4.2 : 3.6 }), 90);
   }, 80);
   scheduleSeed(addMarblingVeins, 360);
 }
@@ -644,7 +677,7 @@ function addMarblingVeins() {
       localFluidSplat(x, y, 0.7, tangentY * 0.5, color, 0.075, 1.2);
     }
   }
-  scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 3.6 : 3 }), 70);
+  scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 4.2 : 3.6 }), 70);
 }
 
 function splashMix(type) {
@@ -800,8 +833,8 @@ function updatePointerPhysics(dt) {
     }
 
     const ribbonIntensity = pointer.moveCount % 12 === 0 ? 0.032 : 0;
-    localFluidSplat(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.color, ribbonIntensity, 7.5);
-    toppings.stir(pointer.slimeX, pointer.slimeY, moveX, moveY, 0.55 + Math.max(1, touchCount) * 0.08);
+    localFluidSplat(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.color, ribbonIntensity, 6);
+    toppings.stir(pointer.slimeX, pointer.slimeY, moveX, moveY, 0.48 + Math.max(1, touchCount) * 0.07);
     state.stirCount += 1;
   });
 
@@ -824,16 +857,35 @@ function frame(timestamp) {
   const dt = state.lastTimestamp ? clamp(timestamp - state.lastTimestamp, 8, 34) : 16.6667;
   state.lastTimestamp = timestamp;
   updateGame(dt);
-  toppings.render();
+  if (timestamp - state.lastToppingRenderTime >= 30) {
+    toppings.render();
+    state.lastToppingRenderTime = timestamp;
+  }
   requestAnimationFrame(frame);
 }
 
 function saveRecipe() {
   try {
-    localStorage.setItem('rye-ryes-slime-time-recipe', JSON.stringify({ theme: state.theme, mixins: [...state.mixins], muted: state.muted }));
+    localStorage.setItem('rye-ryes-slime-time-recipe', JSON.stringify({ theme: state.theme, muted: state.muted }));
   } catch {
     // Persistence is a convenience, never a requirement for play.
   }
+}
+
+function updateMixChoice(button) {
+  const type = button.dataset.mix;
+  const count = state.mixins.get(type) || 0;
+  button.dataset.count = String(count);
+  button.classList.toggle('added', count > 0);
+  button.classList.toggle('maxed', count === MAX_MIX_BATCHES);
+  button.querySelector('.mix-count').textContent = `${count}/${MAX_MIX_BATCHES}`;
+  button.setAttribute('aria-label', `${MIX_LABELS[type]}, ${count} of ${MAX_MIX_BATCHES} batches added`);
+}
+
+function clearMixins() {
+  MIX_TYPES.forEach((type) => state.mixins.set(type, 0));
+  document.querySelectorAll('.mix-choice').forEach(updateMixChoice);
+  toppings.syncMixins();
 }
 
 const stepOrder = ['base', 'mix', 'squish'];
@@ -934,6 +986,7 @@ function exitPlayMode() {
 function goHome() {
   if (state.playMode) exitPlayMode();
   state.started = false;
+  clearMixins();
   setStep('base', { feedback: false });
   welcomeCard.classList.remove('hidden');
   welcomeCard.inert = false;
@@ -947,7 +1000,8 @@ function goHome() {
 
 function resetSlime() {
   initFluid({ replace: true, seedDelay: 120 });
-  toppings.spawnBubbles();
+  clearMixins();
+  toppings.spawnBaseTexture();
   toppings.syncMixins();
   audio.squelch(0.75, 0.68);
   haptic([8, 20, 12]);
@@ -1001,25 +1055,24 @@ document.querySelectorAll('.slime-choice').forEach((button) => {
 
 document.querySelectorAll('.mix-choice').forEach((button) => {
   const mix = button.dataset.mix;
-  const selected = state.mixins.has(mix);
-  button.classList.toggle('selected', selected);
-  button.setAttribute('aria-pressed', String(selected));
+  updateMixChoice(button);
   button.addEventListener('click', () => {
-    const enabled = !state.mixins.has(mix);
-    if (enabled) state.mixins.add(mix); else state.mixins.delete(mix);
-    button.classList.toggle('selected', enabled);
-    button.setAttribute('aria-pressed', String(enabled));
-    toppings.syncMixins();
-    if (enabled) {
-      toppings.burst(mix);
-      splashMix(mix);
-      audio.sparkle();
-      haptic([4, 16, 4, 16, 7]);
-      showHint(mix === 'sprinkles' ? 'Sprinkle swirl!' : `${button.textContent.trim().replace(/\s+/g, ' ')}!`, 1100);
-    } else {
+    const count = state.mixins.get(mix) || 0;
+    if (count >= MAX_MIX_BATCHES) {
+      showHint(`${MIX_LABELS[mix]} is full at 5!`, 1100);
       audio.release(6);
-      haptic(4);
+      haptic([4, 18, 4]);
+      return;
     }
+    const nextCount = count + 1;
+    state.mixins.set(mix, nextCount);
+    updateMixChoice(button);
+    const batch = toppings.addBatch(mix);
+    toppings.burst(mix, batch);
+    splashMix(mix);
+    audio.sparkle();
+    haptic([4, 16, 4, 16, 7]);
+    showHint(`${MIX_LABELS[mix]} · ${nextCount} of ${MAX_MIX_BATCHES}!`, 1100);
     saveRecipe();
   });
 });
@@ -1042,7 +1095,7 @@ requestAnimationFrame(frame);
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'Canvas origin is top-left; x increases right; y increases down; units are CSS pixels.',
   mode: !state.started ? 'welcome' : state.playMode ? 'full-slime' : `making-${state.step}`,
-  recipe: { theme: state.theme, themeName: themes[state.theme].name, mixins: [...state.mixins] },
+  recipe: { theme: state.theme, themeName: themes[state.theme].name, mixinBatches: Object.fromEntries(state.mixins) },
   simulation: {
     engine: state.webglAvailable ? 'WebGL GPU Eulerian fluid with pressure, advection, curl, and dye mixing' : 'animated gradient fallback',
     coverage: 'full-stage',
@@ -1051,13 +1104,18 @@ window.render_game_to_text = () => JSON.stringify({
     stirCount: state.stirCount,
     interactionEnergy: Number(state.interactionEnergy.toFixed(2)),
     averagePointerLag: Number(state.averagePointerLag.toFixed(1)),
-    motionProfile: 'high resistance: 260ms touch lag, broad impulses, strong velocity damping, low curl',
+    motionProfile: 'extra thick: 315ms touch lag, broad low-force impulses, very strong velocity damping, low curl',
     activeTouches: state.activePointers.size,
     settlingDrags: state.settlingPointers.length,
   },
   toppings: {
     total: toppings.particles.length,
-    visibleMixins: [...state.mixins],
+    riceTextureChunks: toppings.particles.filter((particle) => particle.type === 'rice').length,
+    visibleMixins: MIX_TYPES.filter((type) => (state.mixins.get(type) || 0) > 0).map((type) => ({
+      type,
+      batches: state.mixins.get(type),
+      particles: toppings.particles.filter((particle) => particle.type === type).length,
+    })),
   },
   sound: state.muted ? 'off' : 'on',
   cloudSlimeTextureBursts: audio.textureBurstCount,

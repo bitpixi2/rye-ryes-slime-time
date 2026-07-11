@@ -102,21 +102,24 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .slime-glaze { position: absolute; inset: 0; pointer-events: none; }
 .surface-grain {
   z-index: 3;
-  opacity: .18;
+  opacity: .34;
   mix-blend-mode: soft-light;
   background-image:
-    radial-gradient(circle at 18% 22%, rgba(255,255,255,.5) 0 1px, transparent 1.8px),
-    radial-gradient(circle at 73% 68%, rgba(15,0,40,.35) 0 .7px, transparent 1.5px);
-  background-size: 19px 23px, 27px 31px;
+    radial-gradient(circle at 18% 22%, rgba(255,255,255,.68) 0 .8px, transparent 1.7px),
+    radial-gradient(circle at 73% 68%, rgba(15,0,40,.52) 0 .65px, transparent 1.45px),
+    radial-gradient(ellipse at 31% 44%, rgba(255,255,255,.3) 0 1px, rgba(40,0,62,.13) 1.4px, transparent 2.3px),
+    radial-gradient(ellipse at 72% 36%, rgba(255,255,255,.2) 0 .8px, transparent 2px);
+  background-size: 17px 21px, 24px 29px, 37px 31px, 53px 47px;
 }
 .slime-glaze {
   z-index: 4;
-  opacity: .82;
+  opacity: .67;
   mix-blend-mode: soft-light;
   background:
-    radial-gradient(ellipse at 18% 12%, rgba(255,255,255,.34), transparent 32%),
-    radial-gradient(ellipse at 85% 86%, rgba(30,0,70,.28), transparent 42%),
-    linear-gradient(118deg, rgba(255,255,255,.11), transparent 38%, rgba(255,255,255,.08) 69%, transparent);
+    radial-gradient(ellipse at 18% 12%, rgba(255,255,255,.4), transparent 27%),
+    radial-gradient(ellipse at 85% 86%, rgba(30,0,70,.36), transparent 38%),
+    repeating-linear-gradient(118deg, rgba(255,255,255,.12) 0 2px, transparent 3px 17px),
+    linear-gradient(118deg, rgba(255,255,255,.14), transparent 38%, rgba(255,255,255,.09) 69%, transparent);
 }
 .fluid-stage.fluid-fallback {
   background:
@@ -222,6 +225,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .choice-row::-webkit-scrollbar { display: none; }
 
 .slime-choice, .mix-choice {
+  position: relative;
   flex: 0 0 66px;
   border: 1px solid transparent;
   background: transparent;
@@ -233,7 +237,11 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   transition: background .15s ease, transform .12s ease;
 }
 .slime-choice:active, .mix-choice:active { transform: scale(.88); }
-.slime-choice.selected, .mix-choice.selected { background: #efe4ff; border-color: #d7bfff; }
+.slime-choice.selected, .mix-choice.added { background: #efe4ff; border-color: #d7bfff; }
+.mix-choice.maxed { background: #ffe4f2; border-color: #ff8cbd; }
+.mix-count { position: absolute; z-index: 2; top: 1px; right: 0; min-width: 27px; padding: 3px 4px 2px; border-radius: 999px; color: #fff; background: #382743; box-shadow: 0 2px 5px rgba(42,17,55,.22); font-size: 8px; line-height: 1; letter-spacing: .2px; }
+.mix-choice.added .mix-count { background: #7b38f3; }
+.mix-choice.maxed .mix-count { background: #ff3f8d; }
 .slime-choice i, .mix-choice i { display: grid; place-items: center; width: 45px; height: 45px; margin: 0 auto 4px; border-radius: 48% 52% 43% 57% / 55% 42% 58% 45%; box-shadow: inset 8px 8px 15px rgba(255,255,255,.32), inset -6px -7px 12px rgba(31,7,50,.13), 0 4px 8px rgba(50,23,64,.13); transform: rotate(-7deg); }
 .slime-choice:nth-child(even) i { transform: rotate(9deg); }
 .slime-choice .berry { background: linear-gradient(145deg, #ff67b7, #8d2ff3); }

@@ -14,6 +14,9 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Simplified the welcome card to only the app title, Make Slime action, and sound note, and moved the usable slime-making menu up into the empty lower strip.
 - Replaced the three clickable step tabs with large kid-friendly back and next arrows, a simple current-step label, and a linear three-step flow.
 - Verified the arrow journey at 390x664: step labels, contextual hints, disabled endpoints, backward navigation, edge-safe final action, and the transition into 390x664 full-screen slime all pass with no browser errors.
+- Made the slime more cloud-like and resistant with 315ms touch lag, stronger velocity damping, lower curl, rough matte microtexture, and lightweight dimensional rice-style chunks embedded throughout the base material.
+- Mix-ins now start at zero on every load and fresh reset; each of the four types adds one independent batch per tap, shows a 0/5 to 5/5 counter, caps at five batches, and never persists into the next slime.
+- Verified five Candy Sprinkle taps increased the counter one batch at a time, a sixth tap stayed at 5/5, Jelly Stars counted independently, reset/reload returned all four types to zero, and the optimized texture remains responsive with no browser errors.
 - Verified at 390x844 and 1280x720. The fluid covers the full stage, the full-screen mode reaches 390x844, a held pointer repeats sound bursts, 80+ slow stir events keep the field colored, two simultaneous pointers report two active touches and return to zero on release, and the browser console is error-free.
 - Verified the resistance model deterministically with two simultaneous pointers: after 200 ms the simulated contacts still trailed by 48.9 px, release created two settling drags, 400 ms of simulated time cleared both, and no console errors appeared.
 
