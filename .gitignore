@@ -1,0 +1,8 @@
+node_modules/
+dist/
+output/
+.playwright-mcp/
+.DS_Store
+goop-mobile-*.png
+/goop-*.png
+/rye-ryes-*.png

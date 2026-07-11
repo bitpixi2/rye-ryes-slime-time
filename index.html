@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f0ff" />
+    <meta name="description" content="Rye-Rye’s Slime Time is a tiny, tactile slime maker for curious fingers." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Rye-Rye’s Slime Time — Make it. Mix it. Squish it.</title>
+  </head>
+  <body>
+    <main class="app-shell" id="app">
+      <header class="topbar">
+        <button class="wordmark" id="homeButton" aria-label="Rye-Rye’s Slime Time — go back to the start">
+          <span class="wordmark-goop">RYE-RYE’S</span><span class="wordmark-lab">SLIME TIME</span>
+        </button>
+        <div class="top-actions">
+          <button class="icon-button" id="resetButton" aria-label="Reset slime" title="Reset slime">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 4 15.4M4.8 9V4.8M4.8 9H9"/></svg>
+          </button>
+          <button class="icon-button" id="soundButton" aria-label="Turn sound off" aria-pressed="true" title="Sound on">
+            <svg class="sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h3l4 3V7l-4 3H5Z"/><path d="M15 9.5a4 4 0 0 1 0 5M17.5 7a7.5 7.5 0 0 1 0 10"/></svg>
+            <svg class="sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4h3l4 3V7l-4 3H5Z"/><path d="m16 10 4 4M20 10l-4 4"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="playground" id="playground" aria-label="Slime playground">
+        <canvas id="gooCanvas" aria-label="A squishy interactive slime blob. Drag or pinch it to play."></canvas>
+        <div class="hint-bubble" id="hintBubble" role="status">Pick your goop!</div>
+
+        <section class="welcome-card" id="welcomeCard" aria-labelledby="welcomeTitle">
+          <div class="mini-splat" aria-hidden="true"></div>
+          <p class="eyebrow">Rye-Rye’s tiny slime toy</p>
+          <h1 id="welcomeTitle">Make it.<br />Mix it. <em>Squish it.</em></h1>
+          <p>Three tiny steps. Infinite wobbles.</p>
+          <button class="primary-button" id="startButton">MAKE SOME GOO <span aria-hidden="true">→</span></button>
+          <p class="sound-note">Best with your sound on <span aria-hidden="true">♪</span></p>
+        </section>
+
+        <button class="exit-play" id="exitPlayButton">← MIX MORE</button>
+        <div class="play-callout" id="playCallout" aria-hidden="true">
+          <span>PINCH</span><span>POKE</span><span>PULL</span>
+        </div>
+      </section>
+
+      <section class="maker-panel" id="makerPanel" aria-label="Slime maker steps">
+        <nav class="step-tabs" aria-label="Slime making steps">
+          <button class="step-tab active" data-step="base" aria-selected="true"><b>1</b><span>GOOP</span></button>
+          <button class="step-tab" data-step="mix" aria-selected="false"><b>2</b><span>MIX-INS</span></button>
+          <button class="step-tab" data-step="squish" aria-selected="false"><b>3</b><span>SQUISH!</span></button>
+        </nav>
+
+        <div class="step-content active" data-panel="base">
+          <div class="choice-heading"><strong>Choose your goo</strong><span>Tap a color</span></div>
+          <div class="choice-row" role="group" aria-label="Slime colors">
+            <button class="goo-choice selected" data-goo="berry" aria-label="Berry bounce slime" aria-pressed="true"><i class="berry"></i><span>Berry<br />Bounce</span></button>
+            <button class="goo-choice" data-goo="lime" aria-label="Lime fizz slime" aria-pressed="false"><i class="lime"></i><span>Lime<br />Fizz</span></button>
+            <button class="goo-choice" data-goo="mango" aria-label="Mango pop slime" aria-pressed="false"><i class="mango"></i><span>Mango<br />Pop</span></button>
+            <button class="goo-choice" data-goo="aqua" aria-label="Aqua wobble slime" aria-pressed="false"><i class="aqua"></i><span>Aqua<br />Wobble</span></button>
+            <button class="goo-choice" data-goo="galaxy" aria-label="Galaxy grape slime" aria-pressed="false"><i class="galaxy"></i><span>Galaxy<br />Grape</span></button>
+          </div>
+        </div>
+
+        <div class="step-content" data-panel="mix">
+          <div class="choice-heading"><strong>Toss in the fun</strong><span>Add as many as you like</span></div>
+          <div class="choice-row mix-row" role="group" aria-label="Slime mix-ins">
+            <button class="mix-choice" data-mix="sprinkles" aria-pressed="false"><i class="sprinkle-preview"></i><span>Candy<br />Sprinkles</span></button>
+            <button class="mix-choice" data-mix="stars" aria-pressed="false"><i class="star-preview">★</i><span>Jelly<br />Stars</span></button>
+            <button class="mix-choice" data-mix="beads" aria-pressed="false"><i class="bead-preview"></i><span>Bubble<br />Beads</span></button>
+            <button class="mix-choice" data-mix="glitter" aria-pressed="false"><i class="glitter-preview">✦</i><span>Cosmic<br />Glitter</span></button>
+          </div>
+        </div>
+
+        <div class="step-content squish-panel" data-panel="squish">
+          <div>
+            <p class="ready-kicker">YOUR GOO IS READY</p>
+            <strong>Use every finger!</strong>
+            <span>Pull the edges. Poke the middle. Try a pinch.</span>
+          </div>
+          <button class="primary-button squish-button" id="squishButton">GO FULL GOO <span aria-hidden="true">↗</span></button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
