@@ -15,9 +15,6 @@ const soundButton = document.querySelector('#soundButton');
 const resetButton = document.querySelector('#resetButton');
 const exitPlayButton = document.querySelector('#exitPlayButton');
 
-makerPanel.classList.add('before-start');
-makerPanel.inert = true;
-makerPanel.setAttribute('aria-hidden', 'true');
 exitPlayButton.inert = true;
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -866,9 +863,6 @@ function startMaking() {
   welcomeCard.classList.add('hidden');
   welcomeCard.inert = true;
   welcomeCard.setAttribute('aria-hidden', 'true');
-  makerPanel.classList.remove('before-start');
-  makerPanel.inert = false;
-  makerPanel.removeAttribute('aria-hidden');
   showHint('1 · Pick your slime!', 1800);
 }
 
@@ -921,9 +915,9 @@ function goHome() {
   welcomeCard.classList.remove('hidden');
   welcomeCard.inert = false;
   welcomeCard.removeAttribute('aria-hidden');
-  makerPanel.classList.add('before-start');
-  makerPanel.inert = true;
-  makerPanel.setAttribute('aria-hidden', 'true');
+  makerPanel.classList.remove('play-mode');
+  makerPanel.inert = false;
+  makerPanel.removeAttribute('aria-hidden');
   hideHint();
   audio.release(5);
 }
@@ -938,6 +932,9 @@ function resetSlime() {
 }
 
 document.querySelector('#startButton').addEventListener('click', startMaking);
+makerPanel.addEventListener('click', () => {
+  if (!state.started) startMaking();
+}, { capture: true });
 document.querySelector('#squishButton').addEventListener('click', enterPlayMode);
 document.querySelector('#homeButton').addEventListener('click', goHome);
 exitPlayButton.addEventListener('click', exitPlayMode);

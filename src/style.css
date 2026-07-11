@@ -159,7 +159,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   width: min(88vw, 430px);
   transform: translate(-50%, -50%);
   text-align: center;
-  padding: 30px 24px 24px;
+  padding: 34px 24px 25px;
   background: rgba(255,255,255,.86);
   backdrop-filter: blur(18px);
   border: 1px solid rgba(255,255,255,.9);
@@ -168,11 +168,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   transition: opacity .3s ease, transform .35s cubic-bezier(.2,.8,.2,1);
 }
 .welcome-card.hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -44%) scale(.88); transition: opacity .3s ease, transform .35s cubic-bezier(.2,.8,.2,1), visibility 0s .35s; }
-.mini-splat { width: 44px; height: 20px; margin: -13px auto 8px; background: #9b57ff; border-radius: 54% 46% 65% 35% / 55% 60% 40% 45%; box-shadow: 16px -5px 0 -6px #ff55a1, -18px 4px 0 -7px #33d9c7; transform: rotate(-8deg); }
-.eyebrow { margin: 0 0 8px; color: #7b38f3; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
-.welcome-card h1 { margin: 0; font-size: clamp(38px, 12vw, 64px); line-height: .89; letter-spacing: -3.5px; }
-.welcome-card h1 em { color: #ff3f8d; font-style: normal; display: inline-block; transform: rotate(-2deg); }
-.welcome-card > p:not(.eyebrow):not(.sound-note) { margin: 16px 0 20px; color: #6e6174; font-family: system-ui, sans-serif; font-size: 14px; }
+.welcome-card h1 { margin: 0 0 26px; font-size: clamp(36px, 10.5vw, 56px); line-height: .94; letter-spacing: -3px; text-wrap: balance; }
 
 .primary-button {
   min-height: 55px;
@@ -202,7 +198,6 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   max-height: 232px;
   transition: transform .45s cubic-bezier(.7,0,.2,1), max-height .45s ease;
 }
-.maker-panel.before-start { transform: translateY(102%); }
 .maker-panel.play-mode { transform: translateY(110%); max-height: 0; }
 
 .step-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 540px; margin: -18px auto 7px; padding: 5px; border-radius: 18px; background: #fff; box-shadow: 0 7px 24px rgba(51,28,68,.13); }
