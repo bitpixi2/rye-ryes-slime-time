@@ -24,6 +24,11 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Verified the four-step type-to-color journey at 390x664, clean Three.js shader rendering, Matter.js engine switching and recoloring, and fixed Matter timing with substeps so no new physics warnings appear.
 - Verified at 390x844 and 1280x720. The fluid covers the full stage, the full-screen mode reaches 390x844, a held pointer repeats sound bursts, 80+ slow stir events keep the field colored, two simultaneous pointers report two active touches and return to zero on release, and the browser console is error-free.
 - Verified the resistance model deterministically with two simultaneous pointers: after 200 ms the simulated contacts still trailed by 48.9 px, release created two settling drags, 400 ms of simulated time cleared both, and no console errors appeared.
+- Restored the color journey as an unmistakable second page: choosing any slime type now advances directly to `CHOOSE A COLOR`, the forward arrow explicitly says `COLORS`, and all five palettes remain available.
+- Fixed horizontal choice clipping at 320px wide so the first type and first color stay reachable while later choices scroll normally.
+- Replaced the fake front-facing Cloud Slime shader plane with a closed Three.js Marching Cubes volume, a perspective bird's-eye camera, physical material lighting, real sidewalls, contact shadows, slow persistent touch folds, and raised fibrous snow-slime ridges.
+- Removed the sky-cloud icon and relabeled Cloud Slime as `Snowy + thick`; its initial state has no sprinkle-like particles or watery glaze overlay.
+- Verified the new cloud volume at 390x664, 320x568, and full-screen 390x844, including automatic arrival on the color page, 0/5 initial mix-ins, a slow diagonal pull that produced a raised fold, full palette reachability, and zero browser errors.
 
 ## Complete
 

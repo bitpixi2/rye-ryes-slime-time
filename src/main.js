@@ -1,5 +1,6 @@
 import WebGLFluidEnhanced from 'webgl-fluid-enhanced';
 import * as THREE from 'three';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import Matter from 'matter-js';
 import './style.css';
 
@@ -20,6 +21,7 @@ const previousStepButton = document.querySelector('#previousStepButton');
 const nextStepButton = document.querySelector('#nextStepButton');
 const stepCount = document.querySelector('#stepCount');
 const stepName = document.querySelector('#stepName');
+const nextStepLabel = document.querySelector('#nextStepLabel');
 
 exitPlayButton.inert = true;
 
@@ -508,127 +510,218 @@ class CloudSlimeEngine {
   constructor(canvas) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.25 : 1.6));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.15 : 1.5));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.02;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-    this.camera.position.z = 3;
-    this.touches = Array.from({ length: 5 }, () => new THREE.Vector4(-2, -2, 0, 0.08));
-    this.uniforms = {
-      uTime: { value: 0 },
-      uColorA: { value: new THREE.Color() },
-      uColorB: { value: new THREE.Color() },
-      uColorC: { value: new THREE.Color() },
-      uColorD: { value: new THREE.Color() },
-      uTouches: { value: this.touches },
-    };
-    this.geometry = new THREE.PlaneGeometry(2, 2, isMobile ? 48 : 72, isMobile ? 36 : 54);
-    this.material = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
-      vertexShader: `
-        uniform float uTime;
-        uniform vec4 uTouches[5];
-        varying vec2 vUv;
-        varying float vHeight;
-        float heightAt(vec2 uv) {
-          float h = 0.16 * sin(uv.x * 8.0 + uTime * 0.34) * sin(uv.y * 6.2 - uTime * 0.26);
-          h += 0.09 * sin((uv.x + uv.y) * 15.0 - uTime * 0.18);
-          for (int i = 0; i < 5; i++) {
-            vec2 delta = uv - uTouches[i].xy;
-            h -= uTouches[i].z * exp(-dot(delta, delta) / max(0.002, uTouches[i].w));
-          }
-          return h;
-        }
-        void main() {
-          vUv = uv;
-          vHeight = heightAt(uv);
-          vec3 displaced = position;
-          displaced.z += vHeight * 0.72;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        uniform vec3 uColorA;
-        uniform vec3 uColorB;
-        uniform vec3 uColorC;
-        uniform vec3 uColorD;
-        uniform vec4 uTouches[5];
-        varying vec2 vUv;
-        varying float vHeight;
-        float heightAt(vec2 uv) {
-          float h = 0.16 * sin(uv.x * 8.0 + uTime * 0.34) * sin(uv.y * 6.2 - uTime * 0.26);
-          h += 0.09 * sin((uv.x + uv.y) * 15.0 - uTime * 0.18);
-          for (int i = 0; i < 5; i++) {
-            vec2 delta = uv - uTouches[i].xy;
-            h -= uTouches[i].z * exp(-dot(delta, delta) / max(0.002, uTouches[i].w));
-          }
-          return h;
-        }
-        void main() {
-          float eps = 0.006;
-          float hx = heightAt(vUv + vec2(eps, 0.0));
-          float hy = heightAt(vUv + vec2(0.0, eps));
-          vec3 normal = normalize(vec3((vHeight - hx) * 6.0, (vHeight - hy) * 6.0, 1.0));
-          vec3 lightDir = normalize(vec3(-0.45, 0.55, 1.0));
-          float diffuse = 0.58 + max(0.0, dot(normal, lightDir)) * 0.58;
-          float specular = pow(max(0.0, dot(reflect(-lightDir, normal), vec3(0.0, 0.0, 1.0))), 22.0);
-          float a = 0.5 + 0.5 * sin(vUv.x * 9.0 + vUv.y * 2.5 + uTime * 0.22 + vHeight * 5.0);
-          float b = 0.5 + 0.5 * sin(vUv.y * 10.5 - vUv.x * 3.2 - uTime * 0.18);
-          float c = 0.5 + 0.5 * sin((vUv.x + vUv.y) * 8.0 + uTime * 0.13);
-          vec3 color = mix(uColorA, uColorB, smoothstep(0.18, 0.82, a));
-          color = mix(color, uColorC, smoothstep(0.35, 0.88, b) * 0.72);
-          color = mix(color, uColorD, smoothstep(0.58, 0.96, c) * 0.46);
-          color = clamp((color - 0.5) * 1.28 + 0.5, 0.0, 1.0);
-          color *= diffuse;
-          color += specular * 0.38 + smoothstep(0.04, 0.24, vHeight) * 0.08;
-          gl_FragColor = vec4(color, 1.0);
-        }
-      `,
+    this.camera = new THREE.PerspectiveCamera(39, 1, 0.1, 20);
+    this.camera.position.set(0, -3.15, 4.7);
+    this.camera.lookAt(0, 0.05, -0.12);
+    this.group = new THREE.Group();
+    this.scene.add(this.group);
+    this.material = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      vertexColors: true,
+      roughness: 0.86,
+      metalness: 0,
+      clearcoat: 0.025,
+      clearcoatRoughness: 0.95,
+      sheen: 0.32,
+      sheenRoughness: 0.92,
+      sheenColor: 0xffffff,
     });
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
-    this.scene.add(this.mesh);
+    this.material.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        float snowFiber = sin(vViewPosition.x * 27.0 + vViewPosition.y * 8.0 + sin(vViewPosition.y * 17.0))
+          * sin(vViewPosition.y * 23.0 + vViewPosition.z * 13.0);
+        vec2 snowSlope = clamp(vec2(dFdx(snowFiber), dFdy(snowFiber)), vec2(-0.12), vec2(0.12));
+        normal = normalize(normal + vec3(snowSlope * 0.16, 0.0));`,
+      );
+    };
+    this.volume = new MarchingCubes(isMobile ? 30 : 36, this.material, false, true, isMobile ? 22000 : 32000);
+    this.volume.isolation = 74;
+    this.volume.castShadow = true;
+    this.volume.receiveShadow = true;
+    this.group.add(this.volume);
+
+    this.floorMaterial = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
+    this.floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), this.floorMaterial);
+    this.floor.position.z = -0.53;
+    this.floor.receiveShadow = true;
+    this.scene.add(this.floor);
+
+    const hemisphere = new THREE.HemisphereLight(0xfff6ff, 0x24142f, 1.55);
+    this.scene.add(hemisphere);
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 2.7);
+    this.keyLight.position.set(-2.8, -3.6, 6);
+    this.keyLight.castShadow = true;
+    this.keyLight.shadow.mapSize.set(isMobile ? 512 : 1024, isMobile ? 512 : 1024);
+    Object.assign(this.keyLight.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.1, far: 14 });
+    this.keyLight.shadow.camera.updateProjectionMatrix();
+    this.keyLight.shadow.bias = -0.0008;
+    this.scene.add(this.keyLight);
+    const rimLight = new THREE.DirectionalLight(0xbfdcff, 1.1);
+    rimLight.position.set(3.4, 2.4, 3.5);
+    this.scene.add(rimLight);
+
+    this.palette = [];
+    this.touchFolds = [];
+    this.elapsed = 0;
+    this.rebuildElapsed = 1000;
     this.setTheme();
+    this.rebuildVolume();
   }
 
   setTheme() {
     const palette = themes[state.theme].dyePalette;
-    this.uniforms.uColorA.value.set(palette[0]);
-    this.uniforms.uColorB.value.set(palette[1]);
-    this.uniforms.uColorC.value.set(palette[2]);
-    this.uniforms.uColorD.value.set(palette[3] || palette[0]);
+    this.palette = palette.map((color) => new THREE.Color(color).multiplyScalar(0.43));
+    const tableColor = new THREE.Color(themes[state.theme].base).lerp(new THREE.Color(0x25192c), 0.28);
+    this.scene.background = tableColor;
+    this.floorMaterial.color.copy(tableColor);
+    this.material.sheenColor.set(themes[state.theme].accent);
+    this.rebuildElapsed = 1000;
   }
 
   resize(width, height) {
     this.renderer.setSize(width, height, false);
     const aspect = width / Math.max(1, height);
-    this.camera.left = -aspect;
-    this.camera.right = aspect;
-    this.camera.top = 1;
-    this.camera.bottom = -1;
+    this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
-    this.mesh.scale.set(aspect * 1.12, 1.12, 1);
+    this.group.scale.set(Math.max(1.42, aspect * 1.82), 1.68, 0.9);
   }
 
   touch(x, y, dx, dy) {
-    this.touches.pop();
-    this.touches.unshift(new THREE.Vector4(
-      clamp(x / state.toppingWidth, 0, 1),
-      clamp(1 - y / state.toppingHeight, 0, 1),
-      clamp(0.18 + Math.hypot(dx, dy) * 0.018, 0.18, 0.55),
-      0.024 + Math.min(0.035, Math.hypot(dx, dy) * 0.0015),
-    ));
-    this.uniforms.uTouches.value = this.touches;
+    const width = Math.max(1, state.toppingWidth);
+    const height = Math.max(1, state.toppingHeight);
+    const fold = {
+      x: clamp(x / width, 0.055, 0.945),
+      y: clamp(1 - y / height, 0.055, 0.945),
+      pullX: clamp(dx / width * 17, -0.15, 0.15),
+      pullY: clamp(-dy / height * 17, -0.15, 0.15),
+      age: 0,
+      life: 3.8,
+      pressure: clamp(0.72 + Math.hypot(dx, dy) * 0.045, 0.72, 1.2),
+    };
+    const newest = this.touchFolds[0];
+    if (newest && newest.age < 0.055 && Math.hypot(newest.x - fold.x, newest.y - fold.y) < 0.055) {
+      Object.assign(newest, fold);
+    } else {
+      this.touchFolds.unshift(fold);
+      this.touchFolds.length = Math.min(this.touchFolds.length, 14);
+    }
+    this.rebuildElapsed = 1000;
+  }
+
+  addBaseMass() {
+    const columns = 5;
+    const rows = 6;
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const index = row * columns + column;
+        const phase = index * 1.913;
+        const baseX = 0.13 + column * 0.185 + Math.sin(phase) * 0.009;
+        const baseY = 0.09 + row * 0.164 + Math.cos(phase * 1.17) * 0.009;
+        let blobX = baseX;
+        let blobY = baseY;
+        let blobZ = 0.485 + Math.sin(phase * 0.73 + this.elapsed * 0.18) * 0.007;
+        for (const fold of this.touchFolds) {
+          const fade = Math.max(0, 1 - fold.age / fold.life) ** 2;
+          const distanceSquared = (baseX - fold.x) ** 2 + (baseY - fold.y) ** 2;
+          const influence = Math.exp(-distanceSquared / 0.025) * fade;
+          blobX += fold.pullX * influence * 0.34;
+          blobY += fold.pullY * influence * 0.34;
+          blobZ -= influence * 0.045 * fold.pressure;
+        }
+        this.volume.addBall(
+          clamp(blobX, 0.045, 0.955),
+          clamp(blobY, 0.045, 0.955),
+          blobZ,
+          0.47 + ((index * 7) % 5) * 0.012,
+          12.4,
+          this.palette[(column + row * 2) % this.palette.length],
+        );
+      }
+    }
+  }
+
+  addFibrousFolds() {
+    this.touchFolds.forEach((fold, foldIndex) => {
+      const fade = Math.max(0, 1 - fold.age / fold.life) ** 2;
+      if (fade < 0.01) return;
+      const paletteColor = this.palette[(foldIndex + 1) % this.palette.length];
+      const directionLength = Math.max(0.04, Math.hypot(fold.pullX, fold.pullY));
+      const directionX = fold.pullX || Math.sin(foldIndex * 2.4) * 0.035;
+      const directionY = fold.pullY || Math.cos(foldIndex * 2.1) * 0.035;
+
+      for (let point = 0; point < 6; point += 1) {
+        const amount = point / 5;
+        const strandX = clamp(fold.x - directionX * amount * (1.2 + directionLength * 2), 0.035, 0.965);
+        const strandY = clamp(fold.y - directionY * amount * (1.2 + directionLength * 2), 0.035, 0.965);
+        const strandZ = 0.565 + Math.sin(amount * Math.PI) * 0.055 * fade - point * 0.004;
+        this.volume.addBall(strandX, strandY, strandZ, (0.11 - amount * 0.025) * fade + 0.025, 13.8, paletteColor);
+      }
+
+      const ringRadius = 0.052 + fold.pressure * 0.012;
+      for (let point = 0; point < 7; point += 1) {
+        const angle = point * TAU / 7 + foldIndex * 0.31;
+        this.volume.addBall(
+          fold.x + Math.cos(angle) * ringRadius,
+          fold.y + Math.sin(angle) * ringRadius,
+          0.57,
+          0.058 * fade + 0.018,
+          14.5,
+          this.palette[(foldIndex + point) % this.palette.length],
+        );
+      }
+      this.volume.addBall(fold.x, fold.y, 0.625, -0.06 * fade * fold.pressure, 12.8, paletteColor);
+    });
+  }
+
+  addSnowyRidges() {
+    for (let ridge = 0; ridge < 5; ridge += 1) {
+      for (let point = 0; point < 14; point += 1) {
+        const amount = point / 13;
+        const x = 0.075 + amount * 0.85;
+        const y = 0.15 + ridge * 0.17
+          + Math.sin(amount * TAU * (1.05 + ridge * 0.08) + ridge * 1.4) * 0.028;
+        const z = 0.585 + Math.sin(amount * Math.PI + ridge) * 0.018;
+        this.volume.addBall(x, y, z, 0.054 + (point % 3) * 0.004, 14.2, this.palette[(ridge + point) % this.palette.length]);
+      }
+    }
+  }
+
+  rebuildVolume() {
+    this.volume.reset();
+    this.addBaseMass();
+    this.addSnowyRidges();
+    this.addFibrousFolds();
+    this.volume.blur(0.1);
+    this.volume.update();
   }
 
   update(dt) {
-    this.uniforms.uTime.value += dt / 1000;
-    this.touches.forEach((touch) => { touch.z *= 0.955 ** (dt / 16.6667); });
+    const seconds = dt / 1000;
+    this.elapsed += seconds;
+    this.rebuildElapsed += dt;
+    this.touchFolds.forEach((fold) => { fold.age += seconds; });
+    this.touchFolds = this.touchFolds.filter((fold) => fold.age < fold.life);
+    if (this.rebuildElapsed >= (isMobile ? 48 : 34)) {
+      this.rebuildVolume();
+      this.rebuildElapsed = 0;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
   dispose() {
-    this.geometry.dispose();
+    this.volume.geometry.dispose();
     this.material.dispose();
+    this.floor.geometry.dispose();
+    this.floorMaterial.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss?.();
   }
@@ -864,6 +957,8 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     fluidStage.style.background = themes[state.theme].base;
     slimeCanvas.style.backgroundColor = themes[state.theme].base;
     fluidStage.classList.remove('fluid-fallback');
+    fluidStage.classList.toggle('cloud-volume', state.slimeType === 'cloud3d');
+    fluidStage.classList.toggle('putty-mode', state.slimeType === 'putty');
     if (state.slimeType === 'cloud3d') {
       cloudSlime = new CloudSlimeEngine(slimeCanvas);
       cloudSlime.resize(state.toppingWidth, state.toppingHeight);
@@ -1218,6 +1313,7 @@ function setStep(step, { feedback = true } = {}) {
   stepName.textContent = stepDetails[step].name;
   previousStepButton.disabled = stepIndex === 0;
   nextStepButton.disabled = stepIndex === stepOrder.length - 1;
+  nextStepLabel.textContent = step === 'type' ? 'COLORS' : step === 'base' ? 'MIX-INS' : step === 'mix' ? 'SQUISH' : 'DONE';
   previousStepButton.setAttribute('aria-label', stepIndex === 0 ? 'No previous step' : `Back to ${stepDetails[stepOrder[stepIndex - 1]].shortName}`);
   nextStepButton.setAttribute('aria-label', stepIndex === stepOrder.length - 1 ? 'All steps complete' : `Next step: ${stepDetails[stepOrder[stepIndex + 1]].shortName}`);
   if (feedback) {
@@ -1361,7 +1457,10 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     audio.squelch(0.82, state.slimeType === 'cloud3d' ? 0.72 : state.slimeType === 'putty' ? 0.88 : 1);
     haptic([18, 14, 20, 12, 24]);
     const names = { liquidy: 'Liquidy Swirl', cloud3d: 'Cloud Slime 3D', putty: 'Stretchy Putty' };
-    showHint(`${names[state.slimeType]}!`, 1200);
+    showHint(`${names[state.slimeType]}! Now pick colors`, 900);
+    window.setTimeout(() => {
+      if (state.step === 'type' && state.slimeType === button.dataset.slimeType) setStep('base');
+    }, 260);
   });
 });
 
@@ -1433,7 +1532,7 @@ window.render_game_to_text = () => JSON.stringify({
     engine: !state.webglAvailable ? 'animated gradient fallback' : state.slimeType === 'liquidy'
       ? 'WebGL Fluid Enhanced Eulerian solver'
       : state.slimeType === 'cloud3d'
-        ? 'Three.js displaced 3D mesh with custom GPU lighting shader'
+        ? 'Three.js Marching Cubes closed volumetric metaball surface with physical lighting'
         : 'Matter.js constrained soft-body spring lattice',
     coverage: 'full-stage',
     stage: { width: Math.round(state.toppingWidth), height: Math.round(state.toppingHeight) },

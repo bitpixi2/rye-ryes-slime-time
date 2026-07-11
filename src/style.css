@@ -121,6 +121,8 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
     repeating-linear-gradient(118deg, rgba(255,255,255,.12) 0 2px, transparent 3px 17px),
     linear-gradient(118deg, rgba(255,255,255,.14), transparent 38%, rgba(255,255,255,.09) 69%, transparent);
 }
+.fluid-stage.cloud-volume .surface-grain,
+.fluid-stage.cloud-volume .slime-glaze { opacity: 0; }
 .fluid-stage.fluid-fallback {
   background:
     radial-gradient(circle at 22% 35%, #ff78c7 0 8%, transparent 30%),
@@ -268,6 +270,11 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .star-preview { color: #fff17b; background: linear-gradient(145deg,#ff96c9,#7d3bf1); text-shadow: 2px 3px 0 #f09; }
 .bead-preview { background: radial-gradient(circle at 32% 30%, #fff 0 6%, #7ef3e3 8% 22%, transparent 24%), radial-gradient(circle at 68% 67%, #fff 0 5%, #ff75ae 7% 21%, transparent 23%), radial-gradient(circle at 68% 24%, #fff 0 5%, #a778ff 7% 18%, transparent 20%), #d8fff9; }
 .glitter-preview { color: #fff; background: radial-gradient(circle at 35% 35%, #fff 0 3%, transparent 4%), linear-gradient(145deg,#392060,#181025); text-shadow: 0 0 7px #fff, 9px 7px 0 -2px #ff7aca; }
+
+@media (max-width: 370px) {
+  .type-choice-row,
+  .choice-row { justify-content: flex-start; padding-inline: 12px; scroll-padding-inline: 12px; }
+}
 
 .squish-panel.active { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 5px 12px; }
 .squish-panel > div { display: flex; flex-direction: column; min-width: 0; }

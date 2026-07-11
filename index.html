@@ -56,21 +56,21 @@
             <strong id="stepName">CHOOSE A TYPE</strong>
           </div>
           <button class="step-arrow step-next" id="nextStepButton" aria-label="Next step: choose slime color">
-            <span>NEXT</span><span class="arrow-glyph" aria-hidden="true">→</span>
+            <span id="nextStepLabel">COLORS</span><span class="arrow-glyph" aria-hidden="true">→</span>
           </button>
         </nav>
 
         <div class="step-content active" data-panel="type">
-          <div class="choice-heading"><strong>Pick how it feels</strong><span>Three different engines</span></div>
+          <div class="choice-heading"><strong>Pick how it feels</strong><span>Then choose colors</span></div>
           <div class="type-choice-row" role="group" aria-label="Slime physics type">
-            <button class="type-choice selected" data-slime-type="liquidy" aria-pressed="true"><i class="type-liquid" aria-hidden="true">〰</i><span>Liquidy<br />Swirl</span><small>Fluid</small></button>
-            <button class="type-choice" data-slime-type="cloud3d" aria-pressed="false"><i class="type-cloud" aria-hidden="true">☁</i><span>Cloud Slime<br />3D</span><small>Three.js</small></button>
-            <button class="type-choice" data-slime-type="putty" aria-pressed="false"><i class="type-putty" aria-hidden="true">◉</i><span>Stretchy<br />Putty</span><small>Matter.js</small></button>
+            <button class="type-choice selected" data-slime-type="liquidy" aria-pressed="true"><i class="type-liquid" aria-hidden="true">〰</i><span>Liquidy<br />Swirl</span><small>Smooth + swirly</small></button>
+            <button class="type-choice" data-slime-type="cloud3d" aria-pressed="false"><i class="type-cloud" aria-hidden="true">≋</i><span>Cloud Slime<br />3D</span><small>Snowy + thick</small></button>
+            <button class="type-choice" data-slime-type="putty" aria-pressed="false"><i class="type-putty" aria-hidden="true">◉</i><span>Stretchy<br />Putty</span><small>Firm + stretchy</small></button>
           </div>
         </div>
 
         <div class="step-content" data-panel="base">
-          <div class="choice-heading"><strong>Choose your slime</strong><span>Tap a color</span></div>
+          <div class="choice-heading"><strong>Choose your colors</strong><span>Tap a palette</span></div>
           <div class="choice-row" role="group" aria-label="Slime colors">
             <button class="slime-choice selected" data-slime="berry" aria-label="Berry bounce slime" aria-pressed="true"><i class="berry"></i><span>Berry<br />Bounce</span></button>
             <button class="slime-choice" data-slime="lime" aria-label="Lime fizz slime" aria-pressed="false"><i class="lime"></i><span>Lime<br />Fizz</span></button>
