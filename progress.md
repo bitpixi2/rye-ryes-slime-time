@@ -3,14 +3,14 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 ## Progress
 
 - Confirmed the user's correction: this is a slime creator, not a slide creator.
-- Researched Matter.js soft-body examples, verlet-js, Paper.js path smoothing, and Howler mobile-audio patterns.
-- Chose a custom lightweight Verlet soft body and native Web Audio so the interaction can be tuned precisely without a runtime dependency.
+- Researched WebGL Fluid Enhanced, PavelDoGreat’s WebGL fluid simulation, gpu-io, LiquidFun, and particle-based fluid alternatives.
+- Replaced the spring-edged round blob with a pinned WebGL Fluid Enhanced `0.8.0` full-stage Eulerian solver, then tuned pressure, advection, vorticity, dye, and damping for slow slime folds.
 - Generated an original clay/cut-paper candy sprinkle texture with the built-in image generation tool.
-- Built the three-step mobile UI, custom pressure-preserving soft body, multi-pointer grabs, procedural Web Audio sounds, vibration cues, mix-ins, persistence, and full-goo mode.
-- Mobile QA found and fixed a viewport resize bug that shrank the blob; the blob now re-fills the available touch area after resizes.
-- Mobile QA found a grid auto-placement issue in full-goo mode; the playground is now isolated on a full-viewport layer.
+- Built the three-step mobile UI, multi-pointer fluid stirring, advected mix-ins, procedural Web Audio, vibration cues, persistence, and a true full-screen slime mode.
+- Added a repeating cloud-slime sound while a pointer is held: slow low-passed goosh grains plus short band-passed crunchy grains, with movement-sensitive intensity.
+- Prevented additive dye whitening by disabling the library’s duplicate input listeners, making most gesture splats velocity-only, using controlled saturated ribbons, clearing stale seed timers, and recreating the fluid context on stage-size changes.
 - Renamed the app everywhere to “Rye-Rye’s Slime Time” at the user’s request.
-- Verified at 390x844 and 1280x720. The complete mobile flow renders correctly, generated mix-ins stay clipped to the blob, two simultaneous pointer grabs stretch it to the screen edges, releasing returns activeTouches to 0 and restores the target area, and the browser console is error-free.
+- Verified at 390x844 and 1280x720. The fluid covers the full stage, the full-screen mode reaches 390x844, a held pointer repeats sound bursts, 80+ slow stir events keep the field colored, two simultaneous pointers report two active touches and return to zero on release, and the browser console is error-free.
 
 ## Complete
 

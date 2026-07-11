@@ -1,10 +1,13 @@
+import WebGLFluidEnhanced from 'webgl-fluid-enhanced';
 import './style.css';
 
-const canvas = document.querySelector('#gooCanvas');
-const ctx = canvas.getContext('2d', { alpha: false });
 const app = document.querySelector('#app');
 const topbar = document.querySelector('.topbar');
 const playground = document.querySelector('#playground');
+const fluidStage = document.querySelector('#fluidStage');
+let slimeCanvas = document.querySelector('#slimeCanvas');
+const toppingCanvas = document.querySelector('#toppingCanvas');
+const toppingContext = toppingCanvas.getContext('2d');
 const makerPanel = document.querySelector('#makerPanel');
 const welcomeCard = document.querySelector('#welcomeCard');
 const hintBubble = document.querySelector('#hintBubble');
@@ -18,40 +21,46 @@ makerPanel.setAttribute('aria-hidden', 'true');
 exitPlayButton.inert = true;
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const TAU = Math.PI * 2;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const lerp = (a, b, amount) => a + (b - a) * amount;
+const randomBetween = (min, max) => min + Math.random() * (max - min);
 
 const themes = {
   berry: {
     name: 'Berry Bounce',
-    colors: ['#ff75c5', '#9a42f3', '#6621bd'],
-    background: ['#fff3fb', '#f1eaff'],
-    shine: 'rgba(255,255,255,.58)',
+    palette: ['#ff3f91', '#ff79c5', '#a74df4', '#6d24d6', '#ffd0e8'],
+    dyePalette: ['#ff297f', '#b03df2', '#5a16c8', '#28d8ca'],
+    base: '#58148f',
+    accent: '#ff4d9d',
   },
   lime: {
     name: 'Lime Fizz',
-    colors: ['#ddff69', '#55df8d', '#23ad73'],
-    background: ['#f7ffe9', '#e4fff5'],
-    shine: 'rgba(255,255,224,.65)',
+    palette: ['#dfff4f', '#7df38d', '#2ed49c', '#f6ffad', '#44b968'],
+    dyePalette: ['#dfff4f', '#7df38d', '#2ed49c', '#44b968'],
+    base: '#44b96d',
+    accent: '#d8ff4d',
   },
   mango: {
     name: 'Mango Pop',
-    colors: ['#ffe064', '#ff8f4c', '#f24770'],
-    background: ['#fffbea', '#fff0e7'],
-    shine: 'rgba(255,255,238,.62)',
+    palette: ['#ffd83f', '#ff9845', '#ff5d70', '#ffbd55', '#fff09a'],
+    dyePalette: ['#ffd83f', '#ff9845', '#ff5d70', '#ffbd55'],
+    base: '#f06a55',
+    accent: '#ffd63f',
   },
   aqua: {
     name: 'Aqua Wobble',
-    colors: ['#74fae8', '#31cce4', '#237ee5'],
-    background: ['#efffff', '#e9f5ff'],
-    shine: 'rgba(240,255,255,.65)',
+    palette: ['#5ff9e6', '#23d0dc', '#2b91f0', '#b8fff4', '#5b63e7'],
+    dyePalette: ['#5ff9e6', '#23d0dc', '#2b91f0', '#5b63e7'],
+    base: '#2596c7',
+    accent: '#56f6df',
   },
   galaxy: {
     name: 'Galaxy Grape',
-    colors: ['#b36cff', '#6537d6', '#251347'],
-    background: ['#f5efff', '#e9e2ff'],
-    shine: 'rgba(255,221,255,.55)',
+    palette: ['#b96cff', '#713edc', '#ff78cf', '#36205f', '#80dfff'],
+    dyePalette: ['#b96cff', '#713edc', '#ff78cf', '#36205f', '#80dfff'],
+    base: '#382067',
+    accent: '#c873ff',
   },
 };
 
@@ -62,36 +71,37 @@ const state = {
   theme: 'berry',
   mixins: new Set(),
   muted: false,
-  pointerBindings: new Map(),
-  width: 0,
-  height: 0,
-  dpr: 1,
+  activePointers: new Map(),
+  webglAvailable: true,
+  splatCount: 0,
+  stirCount: 0,
+  interactionEnergy: 0,
+  toppingWidth: 0,
+  toppingHeight: 0,
+  toppingDpr: 1,
   time: 0,
   lastTimestamp: 0,
   hintTimer: 0,
-  ripples: [],
-  confetti: [],
 };
 
 try {
-  const saved = JSON.parse(localStorage.getItem('rye-ryes-slime-time-recipe') || localStorage.getItem('goop-lab-recipe') || '{}');
+  const saved = JSON.parse(localStorage.getItem('rye-ryes-slime-time-recipe') || '{}');
   if (themes[saved.theme]) state.theme = saved.theme;
-  if (Array.isArray(saved.mixins)) state.mixins = new Set(saved.mixins.filter((m) => ['sprinkles', 'stars', 'beads', 'glitter'].includes(m)));
+  if (Array.isArray(saved.mixins)) {
+    state.mixins = new Set(saved.mixins.filter((item) => ['sprinkles', 'stars', 'beads', 'glitter'].includes(item)));
+  }
   state.muted = saved.muted === true;
 } catch {
-  // A private browsing mode may not expose local storage. The toy still works.
+  // Storage is optional; the simulation must remain playable without it.
 }
 
-const sprinkleImage = new Image();
-sprinkleImage.src = '/candy-sprinkles.jpg';
-sprinkleImage.onload = () => render();
-
-class GooAudio {
+class SlimeAudio {
   constructor() {
     this.context = null;
     this.master = null;
     this.noiseBuffer = null;
-    this.lastStretch = 0;
+    this.lastDragSound = 0;
+    this.textureBurstCount = 0;
   }
 
   init() {
@@ -101,533 +111,532 @@ class GooAudio {
       if (!AudioContext) return;
       this.context = new AudioContext();
       this.master = this.context.createGain();
-      this.master.gain.value = 0.72;
+      this.master.gain.value = 0.68;
       this.master.connect(this.context.destination);
-      this.noiseBuffer = this.makeNoise();
+      this.noiseBuffer = this.createNoise();
     }
     if (this.context.state === 'suspended') this.context.resume();
   }
 
-  makeNoise() {
-    const length = Math.floor(this.context.sampleRate * 0.3);
+  createNoise() {
+    const length = Math.floor(this.context.sampleRate * 0.4);
     const buffer = this.context.createBuffer(1, length, this.context.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+    let smoothed = 0;
+    for (let index = 0; index < length; index += 1) {
+      smoothed = smoothed * 0.72 + (Math.random() * 2 - 1) * 0.28;
+      data[index] = smoothed * (1 - index / length);
+    }
     return buffer;
   }
 
-  blorp(intensity = 0.5, pitch = 1) {
+  squelch(intensity = 0.5, pitch = 1) {
     this.init();
     if (!this.context || state.muted) return;
     const now = this.context.currentTime;
-    const gain = this.context.createGain();
-    const filter = this.context.createBiquadFilter();
-    const osc = this.context.createOscillator();
+    const amount = clamp(intensity, 0.08, 1);
+    const oscillator = this.context.createOscillator();
     const wobble = this.context.createOscillator();
     const wobbleGain = this.context.createGain();
-    const amount = clamp(intensity, 0.1, 1);
+    const filter = this.context.createBiquadFilter();
+    const gain = this.context.createGain();
+    const noise = this.context.createBufferSource();
+    const noiseFilter = this.context.createBiquadFilter();
+    const noiseGain = this.context.createGain();
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(170 * pitch, now);
-    osc.frequency.exponentialRampToValueAtTime(58 * pitch, now + 0.24);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(145 * pitch, now);
+    oscillator.frequency.exponentialRampToValueAtTime(48 * pitch, now + 0.28);
     wobble.type = 'sine';
-    wobble.frequency.value = 23;
-    wobbleGain.gain.setValueAtTime(28 * amount, now);
-    wobbleGain.gain.exponentialRampToValueAtTime(2, now + 0.22);
-    wobble.connect(wobbleGain).connect(osc.frequency);
+    wobble.frequency.value = 19 + amount * 14;
+    wobbleGain.gain.setValueAtTime(22 * amount, now);
+    wobbleGain.gain.exponentialRampToValueAtTime(1, now + 0.25);
+    wobble.connect(wobbleGain).connect(oscillator.frequency);
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(720, now);
-    filter.frequency.exponentialRampToValueAtTime(170, now + 0.25);
-    filter.Q.value = 5;
+    filter.frequency.setValueAtTime(680, now);
+    filter.frequency.exponentialRampToValueAtTime(115, now + 0.3);
+    filter.Q.value = 7;
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.13 * amount, now + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    gain.gain.exponentialRampToValueAtTime(0.12 * amount, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.31);
 
-    osc.connect(filter).connect(gain).connect(this.master);
-    osc.start(now);
+    noise.buffer = this.noiseBuffer;
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(270 + amount * 230, now);
+    noiseFilter.Q.value = 1.2;
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.055 * amount, now + 0.02);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
+
+    oscillator.connect(filter).connect(gain).connect(this.master);
+    noise.connect(noiseFilter).connect(noiseGain).connect(this.master);
+    oscillator.start(now);
     wobble.start(now);
-    osc.stop(now + 0.3);
-    wobble.stop(now + 0.3);
+    noise.start(now);
+    oscillator.stop(now + 0.32);
+    wobble.stop(now + 0.32);
+    noise.stop(now + 0.2);
   }
 
-  pop(pitch = 1) {
+  wetDrag(speed, touches = 1) {
+    const nowMs = performance.now();
+    if (nowMs - this.lastDragSound < 108) return;
+    this.lastDragSound = nowMs;
+    this.init();
+    if (!this.context || state.muted) return;
+    this.textureBurstCount += 1;
+    const now = this.context.currentTime;
+    const amount = clamp(speed / 30, 0.12, 0.72);
+    const goosh = this.context.createBufferSource();
+    const gooshFilter = this.context.createBiquadFilter();
+    const gooshGain = this.context.createGain();
+    const crunch = this.context.createBufferSource();
+    const crunchFilter = this.context.createBiquadFilter();
+    const crunchGain = this.context.createGain();
+
+    goosh.buffer = this.noiseBuffer;
+    goosh.playbackRate.value = 0.5 + amount * 0.42;
+    gooshFilter.type = 'lowpass';
+    gooshFilter.frequency.value = 165 + amount * 390 + touches * 24;
+    gooshFilter.Q.value = 3.4;
+    gooshGain.gain.setValueAtTime(0.0001, now);
+    gooshGain.gain.exponentialRampToValueAtTime(0.018 + amount * 0.038, now + 0.014);
+    gooshGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+    crunch.buffer = this.noiseBuffer;
+    crunch.playbackRate.value = 1.55 + Math.random() * 0.65 + amount * 0.4;
+    crunchFilter.type = 'bandpass';
+    crunchFilter.frequency.value = 980 + amount * 1250 + Math.random() * 360;
+    crunchFilter.Q.value = 1.8 + touches * 0.25;
+    crunchGain.gain.setValueAtTime(0.0001, now);
+    crunchGain.gain.exponentialRampToValueAtTime(0.008 + amount * 0.022, now + 0.005);
+    crunchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.027);
+    crunchGain.gain.setValueAtTime(0.0001, now + 0.038);
+    crunchGain.gain.exponentialRampToValueAtTime(0.006 + amount * 0.016, now + 0.043);
+    crunchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.072);
+
+    goosh.connect(gooshFilter).connect(gooshGain).connect(this.master);
+    crunch.connect(crunchFilter).connect(crunchGain).connect(this.master);
+    goosh.start(now);
+    crunch.start(now);
+    goosh.stop(now + 0.15);
+    crunch.stop(now + 0.08);
+  }
+
+  release(speed = 8) {
     this.init();
     if (!this.context || state.muted) return;
     const now = this.context.currentTime;
-    const osc = this.context.createOscillator();
+    const oscillator = this.context.createOscillator();
+    const filter = this.context.createBiquadFilter();
     const gain = this.context.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(280 * pitch, now);
-    osc.frequency.exponentialRampToValueAtTime(520 * pitch, now + 0.06);
-    gain.gain.setValueAtTime(0.08, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
-    osc.connect(gain).connect(this.master);
-    osc.start(now);
-    osc.stop(now + 0.1);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(52 + speed * 1.4, now);
+    oscillator.frequency.exponentialRampToValueAtTime(210 + speed * 3, now + 0.12);
+    filter.type = 'lowpass';
+    filter.frequency.value = 420;
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+    oscillator.connect(filter).connect(gain).connect(this.master);
+    oscillator.start(now);
+    oscillator.stop(now + 0.16);
   }
 
-  sprinkle() {
+  sparkle() {
     this.init();
     if (!this.context || state.muted) return;
-    [1, 1.26, 1.55].forEach((ratio, index) => {
+    [1, 1.24, 1.52].forEach((ratio, index) => {
       const now = this.context.currentTime + index * 0.045;
-      const osc = this.context.createOscillator();
+      const oscillator = this.context.createOscillator();
       const gain = this.context.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(480 * ratio, now);
-      osc.frequency.exponentialRampToValueAtTime(850 * ratio, now + 0.08);
-      gain.gain.setValueAtTime(0.045, now);
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(430 * ratio, now);
+      oscillator.frequency.exponentialRampToValueAtTime(860 * ratio, now + 0.08);
+      gain.gain.setValueAtTime(0.04, now);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
-      osc.connect(gain).connect(this.master);
-      osc.start(now);
-      osc.stop(now + 0.12);
+      oscillator.connect(gain).connect(this.master);
+      oscillator.start(now);
+      oscillator.stop(now + 0.12);
     });
-  }
-
-  stretch(speed) {
-    const nowMs = performance.now();
-    if (nowMs - this.lastStretch < 90) return;
-    this.lastStretch = nowMs;
-    this.blorp(clamp(speed / 55, 0.12, 0.5), clamp(1.15 - speed / 140, 0.55, 1.1));
   }
 }
 
-const audio = new GooAudio();
+class ToppingLayer {
+  constructor(context) {
+    this.context = context;
+    this.particles = [];
+    this.palette = themes[state.theme].palette;
+    this.spawnBubbles();
+  }
+
+  resize() {
+    const bounds = toppingCanvas.getBoundingClientRect();
+    state.toppingWidth = Math.max(1, bounds.width);
+    state.toppingHeight = Math.max(1, bounds.height);
+    state.toppingDpr = Math.min(devicePixelRatio || 1, 2);
+    toppingCanvas.width = Math.round(state.toppingWidth * state.toppingDpr);
+    toppingCanvas.height = Math.round(state.toppingHeight * state.toppingDpr);
+  }
+
+  spawnBubbles() {
+    this.particles = this.particles.filter((particle) => particle.type !== 'bubble');
+    for (let index = 0; index < (isMobile ? 18 : 28); index += 1) {
+      this.particles.push(this.makeParticle('bubble'));
+    }
+  }
+
+  makeParticle(type) {
+    return {
+      type,
+      x: Math.random(),
+      y: Math.random(),
+      vx: randomBetween(-0.00008, 0.00008),
+      vy: randomBetween(-0.00008, 0.00008),
+      angle: Math.random() * TAU,
+      spin: randomBetween(-0.0018, 0.0018),
+      size: randomBetween(0.65, 1.35),
+      color: this.palette[Math.floor(Math.random() * this.palette.length)],
+      phase: Math.random() * TAU,
+    };
+  }
+
+  countFor(type) {
+    const mobileCounts = { sprinkles: 54, stars: 14, beads: 28, glitter: 54 };
+    const desktopCounts = { sprinkles: 82, stars: 20, beads: 42, glitter: 82 };
+    return (isMobile ? mobileCounts : desktopCounts)[type] || 20;
+  }
+
+  syncMixins() {
+    this.palette = themes[state.theme].palette;
+    this.particles = this.particles.filter((particle) => particle.type === 'bubble' || state.mixins.has(particle.type));
+    for (const type of state.mixins) {
+      const existing = this.particles.filter((particle) => particle.type === type).length;
+      const desired = this.countFor(type);
+      for (let index = existing; index < desired; index += 1) this.particles.push(this.makeParticle(type));
+    }
+  }
+
+  stir(x, y, dx, dy, force = 1) {
+    const nx = x / state.toppingWidth;
+    const ny = y / state.toppingHeight;
+    const ndx = dx / state.toppingWidth;
+    const ndy = dy / state.toppingHeight;
+    const radius = 0.22;
+    for (const particle of this.particles) {
+      const offsetX = particle.x - nx;
+      const offsetY = particle.y - ny;
+      const distance = Math.hypot(offsetX, offsetY);
+      if (distance > radius) continue;
+      const influence = (1 - distance / radius) ** 2 * force;
+      particle.vx += ndx * influence * 1.9 - offsetY * influence * 0.012;
+      particle.vy += ndy * influence * 1.9 + offsetX * influence * 0.012;
+      particle.spin += (ndx - ndy) * influence * 0.03;
+    }
+  }
+
+  burst(type) {
+    const centerX = randomBetween(0.25, 0.75);
+    const centerY = randomBetween(0.2, 0.8);
+    for (const particle of this.particles.filter((item) => item.type === type)) {
+      if (Math.random() > 0.65) continue;
+      const angle = Math.random() * TAU;
+      particle.x = clamp(centerX + Math.cos(angle) * randomBetween(0.01, 0.16), 0.02, 0.98);
+      particle.y = clamp(centerY + Math.sin(angle) * randomBetween(0.01, 0.16), 0.02, 0.98);
+      particle.vx += Math.cos(angle) * randomBetween(0.0005, 0.0022);
+      particle.vy += Math.sin(angle) * randomBetween(0.0005, 0.0022);
+    }
+  }
+
+  update(milliseconds) {
+    const frame = clamp(milliseconds / 16.6667, 0.2, 2.4);
+    for (let index = 0; index < this.particles.length; index += 1) {
+      const particle = this.particles[index];
+      const ambient = prefersReducedMotion ? 0 : 0.0000025;
+      particle.vx += Math.sin(state.time * 0.00034 + particle.phase + particle.y * 7) * ambient * frame;
+      particle.vy += Math.cos(state.time * 0.00029 + particle.phase + particle.x * 8) * ambient * frame;
+      particle.vx *= 0.982 ** frame;
+      particle.vy *= 0.982 ** frame;
+      particle.spin *= 0.992 ** frame;
+      particle.x += particle.vx * frame;
+      particle.y += particle.vy * frame;
+      particle.angle += particle.spin * frame;
+      if (particle.x < -0.03) particle.x = 1.03;
+      if (particle.x > 1.03) particle.x = -0.03;
+      if (particle.y < -0.03) particle.y = 1.03;
+      if (particle.y > 1.03) particle.y = -0.03;
+    }
+  }
+
+  drawStar(context, radius) {
+    context.beginPath();
+    for (let index = 0; index < 10; index += 1) {
+      const pointRadius = index % 2 === 0 ? radius : radius * 0.44;
+      const angle = -Math.PI / 2 + index * Math.PI / 5;
+      const x = Math.cos(angle) * pointRadius;
+      const y = Math.sin(angle) * pointRadius;
+      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    }
+    context.closePath();
+  }
+
+  render() {
+    const context = this.context;
+    const width = state.toppingWidth;
+    const height = state.toppingHeight;
+    if (!width || !height) return;
+    context.setTransform(state.toppingDpr, 0, 0, state.toppingDpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+    const unit = Math.min(width, height) / 390;
+
+    for (const particle of this.particles) {
+      const x = particle.x * width;
+      const y = particle.y * height;
+      context.save();
+      context.translate(x, y);
+      context.rotate(particle.angle);
+      context.globalAlpha = particle.type === 'bubble' ? 0.34 : 0.83;
+
+      if (particle.type === 'bubble') {
+        const radius = (3.2 + particle.size * 3.4) * unit;
+        const gradient = context.createRadialGradient(-radius * 0.35, -radius * 0.38, 0, 0, 0, radius);
+        gradient.addColorStop(0, 'rgba(255,255,255,.8)');
+        gradient.addColorStop(0.25, 'rgba(255,255,255,.12)');
+        gradient.addColorStop(0.72, 'rgba(35,0,70,.08)');
+        gradient.addColorStop(1, 'rgba(255,255,255,.38)');
+        context.fillStyle = gradient;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, TAU);
+        context.fill();
+      } else if (particle.type === 'sprinkles') {
+        const length = (8 + particle.size * 7) * unit;
+        const thickness = (2.3 + particle.size * 1.5) * unit;
+        context.shadowColor = 'rgba(50,0,70,.25)';
+        context.shadowBlur = 4 * unit;
+        context.shadowOffsetY = 2 * unit;
+        context.fillStyle = particle.color;
+        context.beginPath();
+        context.roundRect(-length / 2, -thickness / 2, length, thickness, thickness);
+        context.fill();
+        context.globalAlpha = 0.34;
+        context.fillStyle = '#fff';
+        context.fillRect(-length * 0.28, -thickness * 0.26, length * 0.42, thickness * 0.2);
+      } else if (particle.type === 'stars') {
+        const radius = (6.5 + particle.size * 5.2) * unit;
+        context.shadowColor = 'rgba(60,0,80,.28)';
+        context.shadowBlur = 5 * unit;
+        context.shadowOffsetY = 2 * unit;
+        context.fillStyle = particle.color;
+        this.drawStar(context, radius);
+        context.fill();
+      } else if (particle.type === 'beads') {
+        const radius = (4.2 + particle.size * 3.6) * unit;
+        const gradient = context.createRadialGradient(-radius * 0.4, -radius * 0.42, 0, 0, 0, radius);
+        gradient.addColorStop(0, '#fff');
+        gradient.addColorStop(0.18, particle.color);
+        gradient.addColorStop(1, 'rgba(60,16,88,.72)');
+        context.fillStyle = gradient;
+        context.shadowColor = 'rgba(35,0,55,.25)';
+        context.shadowBlur = 4 * unit;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, TAU);
+        context.fill();
+      } else if (particle.type === 'glitter') {
+        const radius = (2.2 + particle.size * 3.2) * unit * (0.8 + Math.sin(state.time * 0.006 + particle.phase) * 0.2);
+        context.globalAlpha = 0.4 + Math.sin(state.time * 0.007 + particle.phase) * 0.3;
+        context.fillStyle = Math.sin(particle.phase) > 0 ? '#fff6a8' : '#fff';
+        this.drawStar(context, radius);
+        context.fill();
+      }
+      context.restore();
+    }
+  }
+}
+
+const audio = new SlimeAudio();
+const toppings = new ToppingLayer(toppingContext);
+let fluid = null;
+const seedTimers = new Set();
+
+function clearSeedTimers() {
+  seedTimers.forEach((timer) => clearTimeout(timer));
+  seedTimers.clear();
+}
+
+function scheduleSeed(callback, delay) {
+  const timer = window.setTimeout(() => {
+    seedTimers.delete(timer);
+    callback();
+  }, delay);
+  seedTimers.add(timer);
+}
 
 function haptic(pattern = 10) {
   if ('vibrate' in navigator) navigator.vibrate(pattern);
 }
 
-class SoftBlob {
-  constructor() {
-    this.points = [];
-    this.radius = 100;
-    this.targetX = 0;
-    this.targetY = 0;
-    this.restArea = 1;
-    this.seed = 2.31;
-  }
-
-  reset(width, height) {
-    const count = width < 540 ? 28 : 34;
-    this.radius = this.desiredRadius(width, height);
-    this.radius = Math.max(76, this.radius);
-    this.targetX = width / 2;
-    this.targetY = height * (state.playMode ? 0.51 : 0.53);
-    this.points = [];
-    for (let i = 0; i < count; i += 1) {
-      const angle = (i / count) * TAU - Math.PI / 2;
-      const wobble = 1 + Math.sin(i * 2.73 + this.seed) * 0.035 + Math.sin(i * 1.17) * 0.025;
-      const r = this.radius * wobble;
-      const x = this.targetX + Math.cos(angle) * r;
-      const y = this.targetY + Math.sin(angle) * r;
-      this.points.push({ x, y, oldX: x, oldY: y, angle, restRadius: r, pinnedBy: null });
-    }
-    this.restArea = Math.PI * this.radius * this.radius;
-    state.pointerBindings.clear();
-    state.ripples = [];
-  }
-
-  desiredRadius(width, height) {
-    return Math.max(76, Math.min(width * (state.playMode ? 0.45 : 0.36), height * (state.playMode ? 0.41 : 0.36), state.playMode ? 310 : 245));
-  }
-
-  resize(oldWidth, oldHeight, width, height) {
-    if (!oldWidth || !oldHeight || !this.points.length) {
-      this.reset(width, height);
-      return;
-    }
-    const oldCenter = this.centroid();
-    const nextRadius = this.desiredRadius(width, height);
-    const scale = nextRadius / this.radius;
-    const nextCenter = { x: width / 2, y: height * (state.playMode ? 0.51 : 0.53) };
-    for (const point of this.points) {
-      point.x = nextCenter.x + (point.x - oldCenter.x) * scale;
-      point.oldX = nextCenter.x + (point.oldX - oldCenter.x) * scale;
-      point.y = nextCenter.y + (point.y - oldCenter.y) * scale;
-      point.oldY = nextCenter.y + (point.oldY - oldCenter.y) * scale;
-      point.restRadius *= scale;
-    }
-    this.radius = nextRadius;
-    this.restArea = Math.PI * this.radius * this.radius;
-    this.targetX = width / 2;
-    this.targetY = height * (state.playMode ? 0.51 : 0.53);
-  }
-
-  centroid() {
-    let x = 0;
-    let y = 0;
-    for (const point of this.points) {
-      x += point.x;
-      y += point.y;
-    }
-    return { x: x / this.points.length, y: y / this.points.length };
-  }
-
-  area() {
-    let sum = 0;
-    for (let i = 0; i < this.points.length; i += 1) {
-      const a = this.points[i];
-      const b = this.points[(i + 1) % this.points.length];
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return Math.abs(sum / 2);
-  }
-
-  update(dt) {
-    if (!this.points.length) return;
-    const frame = clamp(dt / 16.6667, 0.2, 2);
-    const damp = prefersReducedMotion ? 0.94 : 0.982;
-    const center = this.centroid();
-    const centerPull = state.pointerBindings.size ? 0.0008 : 0.0025;
-
-    for (const point of this.points) {
-      if (point.pinnedBy !== null) continue;
-      const velocityX = (point.x - point.oldX) * damp;
-      const velocityY = (point.y - point.oldY) * damp;
-      point.oldX = point.x;
-      point.oldY = point.y;
-      point.x += velocityX * frame + (this.targetX - center.x) * centerPull * frame;
-      point.y += velocityY * frame + (this.targetY - center.y) * centerPull * frame;
-      if (!prefersReducedMotion && state.pointerBindings.size === 0) {
-        point.x += Math.sin(state.time * 0.0013 + point.angle * 3) * 0.035 * frame;
-        point.y += Math.cos(state.time * 0.0011 + point.angle * 2) * 0.03 * frame;
-      }
-    }
-
-    const iterations = state.pointerBindings.size ? 7 : 5;
-    for (let pass = 0; pass < iterations; pass += 1) {
-      this.applyBindings();
-      const currentCenter = this.centroid();
-      const targetEdge = (2 * this.radius * Math.sin(Math.PI / this.points.length));
-
-      for (let i = 0; i < this.points.length; i += 1) {
-        const a = this.points[i];
-        const b = this.points[(i + 1) % this.points.length];
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        const correction = ((distance - targetEdge) / distance) * 0.34;
-        const moveX = dx * correction;
-        const moveY = dy * correction;
-        if (a.pinnedBy === null) { a.x += moveX * 0.5; a.y += moveY * 0.5; }
-        if (b.pinnedBy === null) { b.x -= moveX * 0.5; b.y -= moveY * 0.5; }
-      }
-
-      const areaError = clamp((this.restArea - this.area()) / this.restArea, -0.32, 0.42);
-      for (const point of this.points) {
-        if (point.pinnedBy !== null) continue;
-        const dx = point.x - currentCenter.x;
-        const dy = point.y - currentCenter.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        const radialError = point.restRadius - distance;
-        const pressure = areaError * this.radius * 0.055;
-        point.x += (dx / distance) * (radialError * 0.018 + pressure);
-        point.y += (dy / distance) * (radialError * 0.018 + pressure);
-      }
-      this.applyBindings();
-    }
-
-    const margin = 7;
-    for (const point of this.points) {
-      if (point.x < margin) point.x = margin;
-      if (point.x > state.width - margin) point.x = state.width - margin;
-      if (point.y < margin) point.y = margin;
-      if (point.y > state.height - margin) point.y = state.height - margin;
-    }
-  }
-
-  applyBindings() {
-    for (const binding of state.pointerBindings.values()) {
-      const point = this.points[binding.index];
-      if (!point) continue;
-      point.x = binding.x;
-      point.y = binding.y;
-      point.pinnedBy = binding.pointerId;
-
-      for (let offset = 1; offset <= 2; offset += 1) {
-        const falloff = offset === 1 ? 0.22 : 0.08;
-        const before = this.points[(binding.index - offset + this.points.length) % this.points.length];
-        const after = this.points[(binding.index + offset) % this.points.length];
-        if (before.pinnedBy === null) {
-          before.x = lerp(before.x, binding.x, falloff);
-          before.y = lerp(before.y, binding.y, falloff);
-        }
-        if (after.pinnedBy === null) {
-          after.x = lerp(after.x, binding.x, falloff);
-          after.y = lerp(after.y, binding.y, falloff);
-        }
-      }
-    }
-  }
-
-  findPoint(x, y) {
-    let bestIndex = 0;
-    let bestDistance = Infinity;
-    this.points.forEach((point, index) => {
-      if (point.pinnedBy !== null) return;
-      const distance = Math.hypot(x - point.x, y - point.y);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
-      }
-    });
-    return { index: bestIndex, distance: bestDistance };
-  }
-
-  poke(x, y, strength = 18) {
-    const center = this.centroid();
-    this.points.forEach((point) => {
-      const distance = Math.hypot(point.x - x, point.y - y);
-      if (distance > this.radius * 1.1) return;
-      const weight = 1 - distance / (this.radius * 1.1);
-      const dx = point.x - x || point.x - center.x;
-      const dy = point.y - y || point.y - center.y;
-      const length = Math.hypot(dx, dy) || 1;
-      point.oldX = point.x + (dx / length) * strength * weight;
-      point.oldY = point.y + (dy / length) * strength * weight;
-    });
-    state.ripples.push({ x, y, radius: 3, alpha: 0.65 });
-  }
+function resetViewportOrigin() {
+  window.scrollTo(0, 0);
+  app.scrollTo(0, 0);
 }
 
-const blob = new SoftBlob();
-
-function roundedBlobPath(context, points, offsetX = 0, offsetY = 0) {
-  if (!points.length) return;
-  const last = points[points.length - 1];
-  const first = points[0];
-  context.beginPath();
-  context.moveTo((last.x + first.x) / 2 + offsetX, (last.y + first.y) / 2 + offsetY);
-  for (let i = 0; i < points.length; i += 1) {
-    const point = points[i];
-    const next = points[(i + 1) % points.length];
-    context.quadraticCurveTo(point.x + offsetX, point.y + offsetY, (point.x + next.x) / 2 + offsetX, (point.y + next.y) / 2 + offsetY);
-  }
-  context.closePath();
-}
-
-function drawBackdrop() {
+function fluidConfig() {
   const theme = themes[state.theme];
-  const gradient = ctx.createLinearGradient(0, 0, state.width, state.height);
-  gradient.addColorStop(0, theme.background[0]);
-  gradient.addColorStop(1, theme.background[1]);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, state.width, state.height);
-
-  ctx.save();
-  ctx.globalAlpha = 0.28;
-  for (let i = 0; i < 18; i += 1) {
-    const x = ((i * 97.31 + 27) % state.width);
-    const y = ((i * 61.73 + 18) % state.height);
-    const radius = 1.5 + (i % 4) * 0.8;
-    ctx.fillStyle = i % 3 === 0 ? theme.colors[0] : i % 3 === 1 ? theme.colors[1] : '#ff8d42';
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, TAU);
-    ctx.fill();
-  }
-  ctx.restore();
+  return {
+    simResolution: isMobile ? 128 : 196,
+    dyeResolution: isMobile ? 512 : 1024,
+    densityDissipation: 0.16,
+    velocityDissipation: 3.1,
+    pressure: 0.92,
+    pressureIterations: isMobile ? 26 : 34,
+    curl: prefersReducedMotion ? 2 : 10.5,
+    splatRadius: isMobile ? 2.25 : 1.8,
+    splatForce: isMobile ? 2900 : 3400,
+    shading: true,
+    colorful: true,
+    colorUpdateSpeed: 0.45,
+    colorPalette: theme.dyePalette,
+    hover: false,
+    backgroundColor: theme.base,
+    transparent: false,
+    brightness: 0.68,
+    bloom: false,
+    sunrays: false,
+  };
 }
 
-function drawStar(x, y, outer, color, rotation = 0) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation);
-  ctx.beginPath();
-  for (let i = 0; i < 10; i += 1) {
-    const radius = i % 2 === 0 ? outer : outer * 0.45;
-    const angle = -Math.PI / 2 + (i / 10) * TAU;
-    const px = Math.cos(angle) * radius;
-    const py = Math.sin(angle) * radius;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.restore();
+function bindSlimeInput() {
+  slimeCanvas.addEventListener('pointerdown', pointerDown, { passive: false });
+  slimeCanvas.addEventListener('pointermove', pointerMove, { passive: false });
+  slimeCanvas.addEventListener('pointerup', pointerUp);
+  slimeCanvas.addEventListener('pointercancel', pointerUp);
+  slimeCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  slimeCanvas.tabIndex = 0;
+  slimeCanvas.addEventListener('keydown', handleCanvasKey);
 }
 
-function drawMixins(center) {
-  const scale = blob.radius / 190;
-  if (state.mixins.has('sprinkles') && sprinkleImage.complete && sprinkleImage.naturalWidth) {
-    const size = blob.radius * 2.35;
-    ctx.save();
-    ctx.globalAlpha = 0.68;
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.drawImage(sprinkleImage, center.x - size / 2, center.y - size / 2, size, size);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.48;
-    ctx.drawImage(sprinkleImage, center.x - size / 2, center.y - size / 2, size, size);
-    ctx.restore();
-  }
+function replaceSlimeCanvas() {
+  const replacement = document.createElement('canvas');
+  replacement.id = 'slimeCanvas';
+  replacement.setAttribute('aria-label', 'A screen-filling slime surface. Drag, swirl, and fold it to play.');
+  slimeCanvas.replaceWith(replacement);
+  slimeCanvas = replacement;
+}
 
-  if (state.mixins.has('stars')) {
-    const placements = [[-.45,-.18,.13], [.23,-.47,.1], [.45,.16,.14], [-.12,.38,.11], [-.35,.48,.08], [.08,.04,.07]];
-    placements.forEach(([px, py, size], index) => drawStar(center.x + px * blob.radius, center.y + py * blob.radius, size * blob.radius, index % 2 ? '#fff47c' : '#ff72bd', index * .53));
-  }
-
-  if (state.mixins.has('beads')) {
-    const placements = [[-.55,-.18], [-.28,.3], [.08,-.43], [.35,.25], [.5,-.08], [.1,.52], [-.05,.04], [.32,-.37]];
-    placements.forEach(([px, py], index) => {
-      const radius = (8 + index % 3 * 2.2) * scale;
-      const bead = ctx.createRadialGradient(center.x + px * blob.radius - radius * .35, center.y + py * blob.radius - radius * .35, 1, center.x + px * blob.radius, center.y + py * blob.radius, radius);
-      bead.addColorStop(0, '#fff');
-      bead.addColorStop(.18, index % 2 ? '#89fff0' : '#ff99c7');
-      bead.addColorStop(1, index % 2 ? '#2fc3c0' : '#d84e99');
-      ctx.fillStyle = bead;
-      ctx.beginPath();
-      ctx.arc(center.x + px * blob.radius, center.y + py * blob.radius, radius, 0, TAU);
-      ctx.fill();
-    });
-  }
-
-  if (state.mixins.has('glitter')) {
-    ctx.save();
-    for (let i = 0; i < 30; i += 1) {
-      const angle = i * 2.39996;
-      const distance = blob.radius * (.18 + ((i * 37) % 70) / 100);
-      const x = center.x + Math.cos(angle) * distance;
-      const y = center.y + Math.sin(angle) * distance;
-      const pulse = prefersReducedMotion ? 1 : .65 + Math.sin(state.time * .004 + i) * .35;
-      ctx.globalAlpha = .35 + pulse * .5;
-      ctx.fillStyle = i % 3 ? '#fff' : '#ffe879';
-      drawStar(x, y, (1.8 + i % 4) * scale * pulse, ctx.fillStyle, angle);
+function initFluid({ replace = false, seedDelay = 100 } = {}) {
+  try {
+    clearSeedTimers();
+    state.activePointers.clear();
+    if (fluid) {
+      const oldSimulation = fluid.simulation;
+      fluid.stop();
+      oldSimulation.gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
-    ctx.restore();
+    if (replace) replaceSlimeCanvas();
+    fluidStage.style.background = themes[state.theme].base;
+    slimeCanvas.style.backgroundColor = themes[state.theme].base;
+    fluidStage.classList.remove('fluid-fallback');
+    fluid = new WebGLFluidEnhanced(fluidStage);
+    fluid.setConfig(fluidConfig());
+    fluid.start();
+    const simulation = fluid.simulation;
+    simulation.canvas.removeEventListener('mousedown', simulation.handleMouseDown);
+    simulation.canvas.removeEventListener('mousemove', simulation.handleMouseMove);
+    window.removeEventListener('mouseup', simulation.handleMouseUp);
+    simulation.canvas.removeEventListener('touchstart', simulation.handleTouchStart, true);
+    simulation.canvas.removeEventListener('touchmove', simulation.handleTouchMove, true);
+    window.removeEventListener('touchend', simulation.handleTouchEnd);
+    simulation.pointers.length = 0;
+    bindSlimeInput();
+    state.webglAvailable = true;
+    scheduleSeed(() => seedSlime(10), seedDelay);
+  } catch (error) {
+    console.error('Fluid simulation unavailable; using animated fallback.', error);
+    fluid = null;
+    state.webglAvailable = false;
+    fluidStage.classList.add('fluid-fallback');
+    bindSlimeInput();
   }
 }
 
-function renderBlob() {
-  if (!blob.points.length) return;
+function seedSlime(amount = 10) {
+  if (!fluid) return;
   const theme = themes[state.theme];
-  const center = blob.centroid();
-
-  ctx.save();
-  ctx.filter = `blur(${Math.max(8, blob.radius * .07)}px)`;
-  ctx.globalAlpha = 0.22;
-  roundedBlobPath(ctx, blob.points, 0, blob.radius * .12);
-  ctx.fillStyle = theme.colors[2];
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  roundedBlobPath(ctx, blob.points);
-  const fill = ctx.createRadialGradient(center.x - blob.radius * .38, center.y - blob.radius * .42, blob.radius * .08, center.x, center.y, blob.radius * 1.12);
-  fill.addColorStop(0, theme.colors[0]);
-  fill.addColorStop(.5, theme.colors[1]);
-  fill.addColorStop(1, theme.colors[2]);
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.clip();
-  drawMixins(center);
-
-  const glaze = ctx.createLinearGradient(center.x - blob.radius, center.y - blob.radius, center.x + blob.radius, center.y + blob.radius);
-  glaze.addColorStop(0, 'rgba(255,255,255,.2)');
-  glaze.addColorStop(.45, 'rgba(255,255,255,0)');
-  glaze.addColorStop(1, 'rgba(30,0,70,.18)');
-  ctx.fillStyle = glaze;
-  ctx.fillRect(center.x - blob.radius * 1.8, center.y - blob.radius * 1.8, blob.radius * 3.6, blob.radius * 3.6);
-  ctx.restore();
-
-  ctx.save();
-  roundedBlobPath(ctx, blob.points);
-  ctx.strokeStyle = 'rgba(255,255,255,.34)';
-  ctx.lineWidth = Math.max(1.5, blob.radius * .012);
-  ctx.stroke();
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(center.x - blob.radius * .29, center.y - blob.radius * .33);
-  ctx.rotate(-.5);
-  ctx.scale(1.9, .72);
-  const shine = ctx.createRadialGradient(0, 0, 0, 0, 0, blob.radius * .18);
-  shine.addColorStop(0, theme.shine);
-  shine.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = shine;
-  ctx.beginPath();
-  ctx.arc(0, 0, blob.radius * .18, 0, TAU);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawEffects(dt = 16.6667) {
-  for (let i = state.ripples.length - 1; i >= 0; i -= 1) {
-    const ripple = state.ripples[i];
-    ripple.radius += dt * 0.075;
-    ripple.alpha -= dt * 0.0016;
-    if (ripple.alpha <= 0) {
-      state.ripples.splice(i, 1);
-      continue;
-    }
-    ctx.strokeStyle = `rgba(255,255,255,${ripple.alpha})`;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(ripple.x, ripple.y, ripple.radius, 0, TAU);
-    ctx.stroke();
+  fluid.setConfig({ splatRadius: 18 });
+  for (let index = 0; index < amount; index += 1) {
+    const x = state.toppingWidth * (0.08 + ((index * 0.6180339 + 0.11) % 0.84));
+    const y = state.toppingHeight * (0.08 + ((index * 0.4142135 + 0.17) % 0.84));
+    const angle = index * 2.31;
+    localFluidSplat(
+      x,
+      y,
+      Math.cos(angle) * 12,
+      Math.sin(angle) * 12,
+      theme.dyePalette[index % theme.dyePalette.length],
+      0.14,
+      34,
+    );
   }
+  scheduleSeed(() => {
+    fluid?.setConfig({ splatRadius: isMobile ? 2.25 : 1.8 });
+    addSwirlGrid(state.playMode ? 12 : 10, 0.13);
+  }, 80);
+}
 
-  for (let i = state.confetti.length - 1; i >= 0; i -= 1) {
-    const item = state.confetti[i];
-    item.x += item.vx * (dt / 16.6667);
-    item.y += item.vy * (dt / 16.6667);
-    item.vy += .08 * (dt / 16.6667);
-    item.life -= dt;
-    if (item.life <= 0) {
-      state.confetti.splice(i, 1);
-      continue;
-    }
-    ctx.globalAlpha = clamp(item.life / 500, 0, 1);
-    ctx.fillStyle = item.color;
-    ctx.beginPath();
-    ctx.arc(item.x, item.y, item.size, 0, TAU);
-    ctx.fill();
+function normalizedFluidColor(hex, intensity = 0.18) {
+  const value = hex.replace('#', '');
+  const red = parseInt(value.slice(0, 2), 16) / 255;
+  const green = parseInt(value.slice(2, 4), 16) / 255;
+  const blue = parseInt(value.slice(4, 6), 16) / 255;
+  return { r: red * intensity, g: green * intensity, b: blue * intensity };
+}
+
+function localFluidSplat(x, y, dx, dy, color, intensity = 0.12, forceScale = 18) {
+  if (!fluid || !state.toppingWidth || !state.toppingHeight) return;
+  const palette = themes[state.theme].dyePalette;
+  const selectedColor = color || palette[Math.floor(Math.random() * palette.length)];
+  fluid.simulation.gl.disable(fluid.simulation.gl.BLEND);
+  fluid.simulation.splat(
+    clamp(x / state.toppingWidth, 0, 1),
+    clamp(1 - y / state.toppingHeight, 0, 1),
+    clamp(dx * forceScale, -1000, 1000),
+    clamp(-dy * forceScale, -1000, 1000),
+    normalizedFluidColor(selectedColor, intensity),
+  );
+  state.splatCount += 1;
+}
+
+function addSwirlGrid(count = 6, intensity = 0.06) {
+  if (!fluid) return;
+  const theme = themes[state.theme];
+  for (let index = 0; index < count; index += 1) {
+    const x = state.toppingWidth * (0.12 + ((index * 0.618) % 0.76));
+    const y = state.toppingHeight * (0.13 + ((index * 0.414) % 0.74));
+    const angle = index * 2.1;
+    localFluidSplat(x, y, Math.cos(angle) * 32, Math.sin(angle) * 32, theme.dyePalette[index % theme.dyePalette.length], intensity, 34);
   }
-  ctx.globalAlpha = 1;
 }
 
-function render(dt = 16.6667) {
-  if (!state.width || !state.height) return;
-  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-  drawBackdrop();
-  renderBlob();
-  drawEffects(dt);
-}
-
-function update(dt = 16.6667) {
-  state.time += dt;
-  blob.update(dt);
-}
-
-function frame(timestamp) {
-  const dt = state.lastTimestamp ? clamp(timestamp - state.lastTimestamp, 8, 34) : 16.6667;
-  state.lastTimestamp = timestamp;
-  update(dt);
-  render(dt);
-  requestAnimationFrame(frame);
-}
-
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const oldWidth = state.width;
-  const oldHeight = state.height;
-  state.width = Math.max(1, rect.width);
-  state.height = Math.max(1, rect.height);
-  state.dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(state.width * state.dpr);
-  canvas.height = Math.round(state.height * state.dpr);
-  blob.resize(oldWidth, oldHeight, state.width, state.height);
-  render();
+function splashMix(type) {
+  if (!fluid) return;
+  const theme = themes[state.theme];
+  const mixColors = {
+    sprinkles: ['#ff4e98', '#36d9cf', '#ff9b36', '#8b45ed'],
+    stars: ['#fff36e', '#ff76c5', theme.accent],
+    beads: ['#75f4e6', '#ff8ebd', '#b283ff'],
+    glitter: ['#ffd83f', '#ff63c3', theme.accent],
+  };
+  for (let index = 0; index < 6; index += 1) {
+    const angle = index * TAU / 6 + Math.random() * 0.5;
+    const x = state.toppingWidth * randomBetween(0.18, 0.82);
+    const y = state.toppingHeight * randomBetween(0.18, 0.82);
+    localFluidSplat(x, y, Math.cos(angle) * 24, Math.sin(angle) * 24, mixColors[type][index % mixColors[type].length], 0.065);
+  }
 }
 
 function canvasPosition(event) {
-  const rect = canvas.getBoundingClientRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-
-function insideBlob(x, y) {
-  const center = blob.centroid();
-  return Math.hypot(x - center.x, y - center.y) < blob.radius * 1.1;
+  const bounds = slimeCanvas.getBoundingClientRect();
+  return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
 }
 
 function pointerDown(event) {
@@ -635,93 +644,115 @@ function pointerDown(event) {
   event.preventDefault();
   audio.init();
   const position = canvasPosition(event);
-  const nearest = blob.findPoint(position.x, position.y);
-  try {
-    canvas.setPointerCapture?.(event.pointerId);
-  } catch {
-    // Synthetic test events and a few older touch browsers do not expose capture.
-  }
-
-  if (nearest.distance < blob.radius * .78 || insideBlob(position.x, position.y)) {
-    const point = blob.points[nearest.index];
-    point.pinnedBy = event.pointerId;
-    state.pointerBindings.set(event.pointerId, {
-      pointerId: event.pointerId,
-      index: nearest.index,
-      x: position.x,
-      y: position.y,
-      lastX: position.x,
-      lastY: position.y,
-      speed: 0,
-      velocityX: 0,
-      velocityY: 0,
-    });
-    blob.poke(position.x, position.y, 11 + (event.pressure || .5) * 12);
-    audio.blorp(.42 + (event.pressure || .4) * .25, .95 + Math.random() * .15);
-    haptic(10);
-  } else {
-    blob.poke(position.x, position.y, 25);
-    audio.pop(.85);
-  }
+  try { slimeCanvas.setPointerCapture?.(event.pointerId); } catch { /* Capture is optional. */ }
+  const palette = themes[state.theme].dyePalette;
+  const colorIndex = (state.splatCount + state.activePointers.size) % palette.length;
+  state.activePointers.set(event.pointerId, {
+    x: position.x,
+    y: position.y,
+    lastX: position.x,
+    lastY: position.y,
+    speed: 0,
+    moveCount: 0,
+    colorIndex,
+    color: palette[colorIndex],
+  });
+  const nudge = event.pressure > 0 ? event.pressure * 8 : 4;
+  localFluidSplat(position.x, position.y, nudge, -nudge * 0.4, palette[colorIndex], 0.025);
+  toppings.stir(position.x, position.y, nudge, -nudge, 1.25);
+  audio.squelch(0.44 + state.activePointers.size * 0.12, 1 - state.activePointers.size * 0.06);
+  haptic(state.activePointers.size > 1 ? [8, 18, 10] : 9);
   hideHint();
 }
 
 function pointerMove(event) {
-  const binding = state.pointerBindings.get(event.pointerId);
-  if (!binding) return;
+  const pointer = state.activePointers.get(event.pointerId);
+  if (!pointer) return;
   event.preventDefault();
   const position = canvasPosition(event);
-  const dx = position.x - binding.lastX;
-  const dy = position.y - binding.lastY;
-  binding.speed = Math.hypot(dx, dy);
-  binding.velocityX = dx;
-  binding.velocityY = dy;
-  binding.x = clamp(position.x, 3, state.width - 3);
-  binding.y = clamp(position.y, 3, state.height - 3);
-  binding.lastX = position.x;
-  binding.lastY = position.y;
-  if (binding.speed > 7) audio.stretch(binding.speed);
-  if (binding.speed > 15 && Math.random() > .7) haptic(4);
+  const dx = position.x - pointer.lastX;
+  const dy = position.y - pointer.lastY;
+  const speed = Math.hypot(dx, dy);
+  pointer.x = position.x;
+  pointer.y = position.y;
+  pointer.lastX = position.x;
+  pointer.lastY = position.y;
+  pointer.speed = speed;
+  pointer.moveCount += 1;
+  if (pointer.moveCount % 24 === 0) {
+    const palette = themes[state.theme].dyePalette;
+    pointer.colorIndex = (pointer.colorIndex + 1) % palette.length;
+    pointer.color = palette[pointer.colorIndex];
+  }
+  const ribbonIntensity = pointer.moveCount % 6 === 0 ? 0.05 : 0;
+  localFluidSplat(position.x, position.y, dx, dy, pointer.color, ribbonIntensity);
+  toppings.stir(position.x, position.y, dx, dy, 1 + state.activePointers.size * 0.22);
+  state.stirCount += 1;
+  state.interactionEnergy = clamp(state.interactionEnergy + speed * 0.018, 0, 10);
+  audio.wetDrag(speed, state.activePointers.size);
+  if (speed > 13 && performance.now() % 130 < 18) haptic(3);
 }
 
 function pointerUp(event) {
-  const binding = state.pointerBindings.get(event.pointerId);
-  if (!binding) return;
-  const point = blob.points[binding.index];
-  if (point) {
-    point.pinnedBy = null;
-    const kick = clamp(binding.speed, 0, 28) * .55;
-    point.oldX = point.x - binding.velocityX * kick;
-    point.oldY = point.y - binding.velocityY * kick;
-  }
-  state.pointerBindings.delete(event.pointerId);
-  audio.blorp(.32, 1.2);
-  haptic([5, 18, 7]);
+  const pointer = state.activePointers.get(event.pointerId);
+  if (!pointer) return;
+  state.activePointers.delete(event.pointerId);
+  audio.release(pointer.speed);
+  haptic([4, 20, 7]);
 }
 
-function burstConfetti() {
-  const center = blob.centroid();
-  const palette = ['#ff4f9e', '#7b40f1', '#40ded0', '#ffbd3d', '#fff'];
-  for (let i = 0; i < 25; i += 1) {
-    const angle = Math.random() * TAU;
-    const speed = 1.2 + Math.random() * 3.6;
-    state.confetti.push({
-      x: center.x + (Math.random() - .5) * blob.radius,
-      y: center.y + (Math.random() - .5) * blob.radius,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 1.4,
-      size: 1.5 + Math.random() * 3.5,
-      color: palette[i % palette.length],
-      life: 450 + Math.random() * 450,
-    });
+function handleCanvasKey(event) {
+  if (!state.started) return;
+  const centerX = state.toppingWidth / 2;
+  const centerY = state.toppingHeight / 2;
+  const directions = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
+  if (directions[event.key]) {
+    event.preventDefault();
+    const [dx, dy] = directions[event.key];
+    localFluidSplat(centerX, centerY, dx, dy, themes[state.theme].dyePalette[0], 0);
+    toppings.stir(centerX, centerY, dx, dy, 1.4);
+    audio.wetDrag(24, 1);
   }
+  if (event.key === ' ' || event.key === 'Enter') {
+    event.preventDefault();
+    addSwirlGrid(7, 0.05);
+    audio.squelch(0.7, 0.86);
+    haptic(10);
+  }
+  if (event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    if (state.playMode) exitPlayMode(); else enterPlayMode();
+  }
+}
+
+function resizeToppings() {
+  toppings.resize();
+  toppings.render();
+}
+
+function frame(timestamp) {
+  const dt = state.lastTimestamp ? clamp(timestamp - state.lastTimestamp, 8, 34) : 16.6667;
+  state.lastTimestamp = timestamp;
+  state.time += dt;
+  state.interactionEnergy *= 0.982 ** (dt / 16.6667);
+  if (state.activePointers.size) {
+    let heldSpeed = 0;
+    state.activePointers.forEach((pointer) => {
+      heldSpeed += pointer.speed;
+      pointer.speed *= 0.84 ** (dt / 16.6667);
+    });
+    audio.wetDrag(Math.max(3.5, heldSpeed / state.activePointers.size), state.activePointers.size);
+  }
+  toppings.update(dt);
+  toppings.render();
+  requestAnimationFrame(frame);
 }
 
 function saveRecipe() {
   try {
     localStorage.setItem('rye-ryes-slime-time-recipe', JSON.stringify({ theme: state.theme, mixins: [...state.mixins], muted: state.muted }));
   } catch {
-    // Saving is a bonus; never let it interrupt play.
+    // Persistence is a convenience, never a requirement for play.
   }
 }
 
@@ -733,8 +764,8 @@ function setStep(step) {
     button.setAttribute('aria-selected', String(selected));
   });
   document.querySelectorAll('.step-content').forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === step));
-  audio.pop(step === 'base' ? .9 : step === 'mix' ? 1.1 : 1.3);
-  haptic(7);
+  audio.release(step === 'base' ? 5 : step === 'mix' ? 9 : 13);
+  haptic(6);
 }
 
 function showHint(message, duration = 1500) {
@@ -750,8 +781,8 @@ function hideHint() {
 
 function startMaking() {
   audio.init();
-  audio.blorp(.65, 1.05);
-  haptic([12, 25, 16]);
+  audio.squelch(0.68, 0.92);
+  haptic([10, 24, 15]);
   state.started = true;
   welcomeCard.classList.add('hidden');
   welcomeCard.inert = true;
@@ -759,13 +790,14 @@ function startMaking() {
   makerPanel.classList.remove('before-start');
   makerPanel.inert = false;
   makerPanel.removeAttribute('aria-hidden');
-  showHint('1 · Pick your goop!', 1900);
-  setTimeout(resizeCanvas, 420);
+  showHint('1 · Pick your slime!', 1800);
 }
 
 function enterPlayMode() {
+  if (!state.started || state.playMode) return;
   state.playMode = true;
-  app.classList.add('full-goo');
+  app.classList.add('full-slime');
+  resetViewportOrigin();
   playground.classList.add('play-mode');
   makerPanel.classList.add('play-mode');
   makerPanel.inert = true;
@@ -773,19 +805,22 @@ function enterPlayMode() {
   topbar.inert = true;
   topbar.setAttribute('aria-hidden', 'true');
   exitPlayButton.inert = false;
-  audio.blorp(.9, .75);
-  haptic([15, 30, 20, 30, 28]);
-  burstConfetti();
-  setTimeout(() => {
-    resizeCanvas();
-    blob.poke(state.width / 2, state.height / 2, 28);
-    showHint('Use every finger!', 1900);
-  }, 460);
+  audio.squelch(0.92, 0.72);
+  haptic([14, 28, 20, 28, 25]);
+  window.setTimeout(() => {
+    resetViewportOrigin();
+    resizeToppings();
+    initFluid({ replace: true, seedDelay: 90 });
+    toppings.syncMixins();
+    showHint('Draw slow circles to fold the colors!', 2200);
+  }, 470);
 }
 
 function exitPlayMode() {
+  if (!state.playMode) return;
   state.playMode = false;
-  app.classList.remove('full-goo');
+  app.classList.remove('full-slime');
+  resetViewportOrigin();
   playground.classList.remove('play-mode');
   makerPanel.classList.remove('play-mode');
   makerPanel.inert = false;
@@ -793,9 +828,12 @@ function exitPlayMode() {
   topbar.inert = false;
   topbar.removeAttribute('aria-hidden');
   exitPlayButton.inert = true;
-  audio.pop(.8);
-  haptic(8);
-  setTimeout(resizeCanvas, 460);
+  audio.release(7);
+  haptic(7);
+  window.setTimeout(() => {
+    resizeToppings();
+    initFluid({ replace: true, seedDelay: 90 });
+  }, 470);
 }
 
 function goHome() {
@@ -808,21 +846,23 @@ function goHome() {
   makerPanel.inert = true;
   makerPanel.setAttribute('aria-hidden', 'true');
   hideHint();
-  audio.pop(.75);
+  audio.release(5);
 }
 
-function resetGoo() {
-  blob.reset(state.width, state.height);
-  audio.blorp(.7, .7);
+function resetSlime() {
+  initFluid({ replace: true, seedDelay: 120 });
+  toppings.spawnBubbles();
+  toppings.syncMixins();
+  audio.squelch(0.75, 0.68);
   haptic([8, 20, 12]);
-  showHint('Fresh goo!', 1000);
+  showHint('Fresh slime!', 1100);
 }
 
 document.querySelector('#startButton').addEventListener('click', startMaking);
 document.querySelector('#squishButton').addEventListener('click', enterPlayMode);
 document.querySelector('#homeButton').addEventListener('click', goHome);
 exitPlayButton.addEventListener('click', exitPlayMode);
-resetButton.addEventListener('click', resetGoo);
+resetButton.addEventListener('click', resetSlime);
 
 soundButton.classList.toggle('sound-muted', state.muted);
 soundButton.setAttribute('aria-pressed', String(!state.muted));
@@ -832,28 +872,30 @@ soundButton.addEventListener('click', () => {
   soundButton.classList.toggle('sound-muted', state.muted);
   soundButton.setAttribute('aria-pressed', String(!state.muted));
   soundButton.setAttribute('aria-label', state.muted ? 'Turn sound on' : 'Turn sound off');
-  if (!state.muted) audio.pop(1.2);
-  haptic(6);
+  if (!state.muted) audio.release(11);
+  haptic(5);
   saveRecipe();
 });
 
 document.querySelectorAll('.step-tab').forEach((button) => button.addEventListener('click', () => setStep(button.dataset.step)));
 
-document.querySelectorAll('.goo-choice').forEach((button) => {
-  const selected = button.dataset.goo === state.theme;
+document.querySelectorAll('.slime-choice').forEach((button) => {
+  const selected = button.dataset.slime === state.theme;
   button.classList.toggle('selected', selected);
   button.setAttribute('aria-pressed', String(selected));
   button.addEventListener('click', () => {
-    state.theme = button.dataset.goo;
-    document.querySelectorAll('.goo-choice').forEach((choice) => {
+    state.theme = button.dataset.slime;
+    document.querySelectorAll('.slime-choice').forEach((choice) => {
       const isSelected = choice === button;
       choice.classList.toggle('selected', isSelected);
       choice.setAttribute('aria-pressed', String(isSelected));
     });
-    blob.poke(blob.centroid().x, blob.centroid().y, 22);
-    audio.blorp(.65, .85 + Math.random() * .35);
-    haptic([7, 15, 10]);
-    showHint(`${themes[state.theme].name}!`, 1050);
+    toppings.palette = themes[state.theme].palette;
+    toppings.syncMixins();
+    initFluid({ replace: true, seedDelay: 120 });
+    audio.squelch(0.7, 0.78 + Math.random() * 0.25);
+    haptic([7, 14, 9]);
+    showHint(`${themes[state.theme].name}!`, 1100);
     saveRecipe();
   });
 });
@@ -864,77 +906,68 @@ document.querySelectorAll('.mix-choice').forEach((button) => {
   button.classList.toggle('selected', selected);
   button.setAttribute('aria-pressed', String(selected));
   button.addEventListener('click', () => {
-    if (state.mixins.has(mix)) state.mixins.delete(mix); else state.mixins.add(mix);
-    const enabled = state.mixins.has(mix);
+    const enabled = !state.mixins.has(mix);
+    if (enabled) state.mixins.add(mix); else state.mixins.delete(mix);
     button.classList.toggle('selected', enabled);
     button.setAttribute('aria-pressed', String(enabled));
+    toppings.syncMixins();
     if (enabled) {
-      burstConfetti();
-      audio.sprinkle();
-      haptic([5, 18, 5, 18, 8]);
-      blob.poke(blob.centroid().x, blob.centroid().y, 18);
-      showHint(mix === 'sprinkles' ? 'Sprinkle storm!' : `${button.textContent.trim().replace(/\s+/g, ' ')}!`, 1100);
+      toppings.burst(mix);
+      splashMix(mix);
+      audio.sparkle();
+      haptic([4, 16, 4, 16, 7]);
+      showHint(mix === 'sprinkles' ? 'Sprinkle swirl!' : `${button.textContent.trim().replace(/\s+/g, ' ')}!`, 1100);
     } else {
-      audio.pop(.7);
-      haptic(5);
+      audio.release(6);
+      haptic(4);
     }
     saveRecipe();
   });
 });
 
-canvas.addEventListener('pointerdown', pointerDown, { passive: false });
-canvas.addEventListener('pointermove', pointerMove, { passive: false });
-canvas.addEventListener('pointerup', pointerUp);
-canvas.addEventListener('pointercancel', pointerUp);
-canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-
-canvas.tabIndex = 0;
-canvas.addEventListener('keydown', (event) => {
-  if (!state.started) return;
-  const center = blob.centroid();
-  const directions = { ArrowLeft: [-25, 0], ArrowRight: [25, 0], ArrowUp: [0, -25], ArrowDown: [0, 25] };
-  if (directions[event.key]) {
-    event.preventDefault();
-    const [x, y] = directions[event.key];
-    blob.points.forEach((point) => { point.oldX -= x; point.oldY -= y; });
-    audio.blorp(.35, 1);
-  }
-  if (event.key === ' ' || event.key === 'Enter') {
-    event.preventDefault();
-    blob.poke(center.x, center.y, 28);
-    audio.blorp(.7, .85);
-    haptic(10);
-  }
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.playMode) exitPlayMode();
 });
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && audio.context?.state === 'suspended' && !state.muted) audio.context.resume();
 });
 
-new ResizeObserver(resizeCanvas).observe(playground);
-window.addEventListener('resize', resizeCanvas);
+new ResizeObserver(resizeToppings).observe(playground);
+window.addEventListener('resize', resizeToppings);
+resizeToppings();
+toppings.syncMixins();
+initFluid();
 requestAnimationFrame(frame);
 
-window.render_game_to_text = () => {
-  const center = blob.centroid();
-  return JSON.stringify({
-    coordinateSystem: 'Canvas origin is top-left; x increases right; y increases down; units are CSS pixels.',
-    mode: !state.started ? 'welcome' : state.playMode ? 'full-goo' : `making-${state.step}`,
-    recipe: { theme: state.theme, themeName: themes[state.theme].name, mixins: [...state.mixins] },
-    blob: {
-      center: { x: Math.round(center.x), y: Math.round(center.y) },
-      restRadius: Math.round(blob.radius),
-      points: blob.points.length,
-      currentArea: Math.round(blob.area()),
-    },
-    activeTouches: state.pointerBindings.size,
-    sound: state.muted ? 'off' : 'on',
-    hapticsAvailable: 'vibrate' in navigator,
-  });
-};
+window.render_game_to_text = () => JSON.stringify({
+  coordinateSystem: 'Canvas origin is top-left; x increases right; y increases down; units are CSS pixels.',
+  mode: !state.started ? 'welcome' : state.playMode ? 'full-slime' : `making-${state.step}`,
+  recipe: { theme: state.theme, themeName: themes[state.theme].name, mixins: [...state.mixins] },
+  simulation: {
+    engine: state.webglAvailable ? 'WebGL GPU Eulerian fluid with pressure, advection, curl, and dye mixing' : 'animated gradient fallback',
+    coverage: 'full-stage',
+    stage: { width: Math.round(state.toppingWidth), height: Math.round(state.toppingHeight) },
+    splatCount: state.splatCount,
+    stirCount: state.stirCount,
+    interactionEnergy: Number(state.interactionEnergy.toFixed(2)),
+    activeTouches: state.activePointers.size,
+  },
+  toppings: {
+    total: toppings.particles.length,
+    visibleMixins: [...state.mixins],
+  },
+  sound: state.muted ? 'off' : 'on',
+  cloudSlimeTextureBursts: audio.textureBurstCount,
+  hapticsAvailable: 'vibrate' in navigator,
+});
 
 window.advanceTime = (milliseconds) => {
   const steps = Math.max(1, Math.round(milliseconds / 16.6667));
-  for (let i = 0; i < steps; i += 1) update(16.6667);
-  render(16.6667);
+  for (let index = 0; index < steps; index += 1) {
+    state.time += 16.6667;
+    state.interactionEnergy *= 0.982;
+    toppings.update(16.6667);
+  }
+  toppings.render();
 };

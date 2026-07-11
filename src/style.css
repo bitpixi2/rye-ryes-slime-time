@@ -53,7 +53,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   transform: rotate(-2deg);
 }
 
-.wordmark-goop {
+.wordmark-name {
   color: var(--purple);
   font-size: 20px;
   line-height: 1;
@@ -61,7 +61,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   text-shadow: 0 2px 0 #cbb5ff;
 }
 
-.wordmark-lab {
+.wordmark-tag {
   font-size: 7px;
   letter-spacing: .7px;
   background: #251b2f;
@@ -91,24 +91,46 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .sound-muted .sound-on { display: none; }
 .sound-muted .sound-off { display: block; }
 
-.playground { position: relative; min-height: 0; overflow: hidden; isolation: isolate; }
-#gooCanvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
-#gooCanvas:active { cursor: grabbing; }
-
-.playground::before,
-.playground::after {
-  content: "";
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #ff8f29;
-  box-shadow: 28px 18px 0 #ff4c9a, 53px -4px 0 #36d7c6, 78px 21px 0 #8c4cff;
-  z-index: -1;
-  opacity: .7;
+.playground { position: relative; min-height: 0; overflow: hidden; isolation: isolate; background: #a949e8; }
+.fluid-stage { position: absolute !important; inset: 0; overflow: hidden; touch-action: none; cursor: grab; background: #a949e8; }
+.fluid-stage:active { cursor: grabbing; }
+#slimeCanvas,
+#toppingCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#slimeCanvas { z-index: 0; touch-action: none; background: #7f2cc8; }
+#toppingCanvas { z-index: 2; pointer-events: none; }
+.surface-grain,
+.slime-glaze { position: absolute; inset: 0; pointer-events: none; }
+.surface-grain {
+  z-index: 3;
+  opacity: .18;
+  mix-blend-mode: soft-light;
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(255,255,255,.5) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 73% 68%, rgba(15,0,40,.35) 0 .7px, transparent 1.5px);
+  background-size: 19px 23px, 27px 31px;
 }
-.playground::before { left: 8%; top: 10%; transform: rotate(25deg); }
-.playground::after { right: 12%; bottom: 18%; transform: rotate(160deg); }
+.slime-glaze {
+  z-index: 4;
+  opacity: .82;
+  mix-blend-mode: soft-light;
+  background:
+    radial-gradient(ellipse at 18% 12%, rgba(255,255,255,.34), transparent 32%),
+    radial-gradient(ellipse at 85% 86%, rgba(30,0,70,.28), transparent 42%),
+    linear-gradient(118deg, rgba(255,255,255,.11), transparent 38%, rgba(255,255,255,.08) 69%, transparent);
+}
+.fluid-stage.fluid-fallback {
+  background:
+    radial-gradient(circle at 22% 35%, #ff78c7 0 8%, transparent 30%),
+    radial-gradient(circle at 72% 28%, #7139e8 0 10%, transparent 34%),
+    radial-gradient(circle at 58% 78%, #35d8d0 0 8%, transparent 32%),
+    #8b38d4;
+  background-size: 160% 160%;
+  animation: fallback-slime 9s ease-in-out infinite alternate;
+}
+@keyframes fallback-slime {
+  from { background-position: 0% 15%; filter: saturate(1.05); }
+  to { background-position: 100% 80%; filter: saturate(1.3); }
+}
 
 .hint-bubble {
   position: absolute;
@@ -198,7 +220,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .choice-row { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; padding: 0 4px 3px; justify-content: center; }
 .choice-row::-webkit-scrollbar { display: none; }
 
-.goo-choice, .mix-choice {
+.slime-choice, .mix-choice {
   flex: 0 0 66px;
   border: 1px solid transparent;
   background: transparent;
@@ -209,15 +231,15 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   cursor: pointer;
   transition: background .15s ease, transform .12s ease;
 }
-.goo-choice:active, .mix-choice:active { transform: scale(.88); }
-.goo-choice.selected, .mix-choice.selected { background: #efe4ff; border-color: #d7bfff; }
-.goo-choice i, .mix-choice i { display: grid; place-items: center; width: 45px; height: 45px; margin: 0 auto 4px; border-radius: 48% 52% 43% 57% / 55% 42% 58% 45%; box-shadow: inset 8px 8px 15px rgba(255,255,255,.32), inset -6px -7px 12px rgba(31,7,50,.13), 0 4px 8px rgba(50,23,64,.13); transform: rotate(-7deg); }
-.goo-choice:nth-child(even) i { transform: rotate(9deg); }
-.goo-choice .berry { background: linear-gradient(145deg, #ff67b7, #8d2ff3); }
-.goo-choice .lime { background: linear-gradient(145deg, #dfff58, #4ddc85); }
-.goo-choice .mango { background: linear-gradient(145deg, #ffd846, #ff6759); }
-.goo-choice .aqua { background: linear-gradient(145deg, #62f4e5, #229bf1); }
-.goo-choice .galaxy { background: radial-gradient(circle at 30% 25%, #ff85db 0 4%, transparent 5%), radial-gradient(circle at 65% 62%, #fff 0 2%, transparent 3%), linear-gradient(145deg, #7446f1, #21113f); }
+.slime-choice:active, .mix-choice:active { transform: scale(.88); }
+.slime-choice.selected, .mix-choice.selected { background: #efe4ff; border-color: #d7bfff; }
+.slime-choice i, .mix-choice i { display: grid; place-items: center; width: 45px; height: 45px; margin: 0 auto 4px; border-radius: 48% 52% 43% 57% / 55% 42% 58% 45%; box-shadow: inset 8px 8px 15px rgba(255,255,255,.32), inset -6px -7px 12px rgba(31,7,50,.13), 0 4px 8px rgba(50,23,64,.13); transform: rotate(-7deg); }
+.slime-choice:nth-child(even) i { transform: rotate(9deg); }
+.slime-choice .berry { background: linear-gradient(145deg, #ff67b7, #8d2ff3); }
+.slime-choice .lime { background: linear-gradient(145deg, #dfff58, #4ddc85); }
+.slime-choice .mango { background: linear-gradient(145deg, #ffd846, #ff6759); }
+.slime-choice .aqua { background: linear-gradient(145deg, #62f4e5, #229bf1); }
+.slime-choice .galaxy { background: radial-gradient(circle at 30% 25%, #ff85db 0 4%, transparent 5%), radial-gradient(circle at 65% 62%, #fff 0 2%, transparent 3%), linear-gradient(145deg, #7446f1, #21113f); }
 
 .mix-choice i { border-radius: 14px; font-style: normal; font-size: 24px; }
 .sprinkle-preview { background: url('/candy-sprinkles.jpg') center / cover; }
@@ -254,13 +276,13 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .play-mode .exit-play { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 .play-mode .hint-bubble { top: 56px; }
 .play-callout { position: absolute; z-index: 4; inset: auto 18px 22px; display: flex; justify-content: space-between; pointer-events: none; opacity: 0; transition: opacity .4s .25s ease; }
-.play-callout span { color: rgba(42,29,51,.36); font-size: 10px; letter-spacing: 1.8px; }
+.play-callout span { color: rgba(255,255,255,.68); font-size: 10px; letter-spacing: 1.8px; text-shadow: 0 1px 5px rgba(30,0,50,.45); }
 .play-mode .play-callout { opacity: 1; }
 
-.app-shell.full-goo { grid-template-rows: 0 minmax(0, 1fr) 0; }
-.app-shell.full-goo .topbar { transform: translateY(-100%); visibility: hidden; }
-.app-shell.full-goo .maker-panel { visibility: hidden; }
-.app-shell.full-goo .playground { position: absolute; inset: 0; z-index: 40; width: 100%; height: 100%; }
+.app-shell.full-slime { grid-template-rows: 0 minmax(0, 1fr) 0; }
+.app-shell.full-slime .topbar { transform: translateY(-100%); visibility: hidden; }
+.app-shell.full-slime .maker-panel { visibility: hidden; }
+.app-shell.full-slime .playground { position: absolute; inset: 0; z-index: 40; width: 100%; height: 100%; }
 .topbar { transition: transform .4s ease; }
 
 @media (min-width: 760px) {
@@ -269,8 +291,8 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   .maker-panel { max-height: 244px; padding-bottom: 18px; }
   .step-tabs { margin-top: -20px; }
   .choice-row { gap: 15px; }
-  .goo-choice, .mix-choice { flex-basis: 85px; font-size: 10px; }
-  .goo-choice i, .mix-choice i { width: 57px; height: 57px; }
+  .slime-choice, .mix-choice { flex-basis: 85px; font-size: 10px; }
+  .slime-choice i, .mix-choice i { width: 57px; height: 57px; }
   .choice-heading { padding-top: 6px; }
 }
 
@@ -281,7 +303,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   .maker-panel { max-height: 194px; }
   .choice-heading { display: none; }
   .step-tabs { margin-bottom: 3px; }
-  .goo-choice i, .mix-choice i { width: 39px; height: 39px; }
+  .slime-choice i, .mix-choice i { width: 39px; height: 39px; }
   .welcome-card { padding: 20px; }
 }
 

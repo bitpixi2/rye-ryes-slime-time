@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "webgl-fluid-enhanced": "0.8.0"
   }
 }

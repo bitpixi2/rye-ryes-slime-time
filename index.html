@@ -12,7 +12,7 @@
     <main class="app-shell" id="app">
       <header class="topbar">
         <button class="wordmark" id="homeButton" aria-label="Rye-Rye’s Slime Time — go back to the start">
-          <span class="wordmark-goop">RYE-RYE’S</span><span class="wordmark-lab">SLIME TIME</span>
+          <span class="wordmark-name">RYE-RYE’S</span><span class="wordmark-tag">SLIME TIME</span>
         </button>
         <div class="top-actions">
           <button class="icon-button" id="resetButton" aria-label="Reset slime" title="Reset slime">
@@ -26,39 +26,44 @@
       </header>
 
       <section class="playground" id="playground" aria-label="Slime playground">
-        <canvas id="gooCanvas" aria-label="A squishy interactive slime blob. Drag or pinch it to play."></canvas>
-        <div class="hint-bubble" id="hintBubble" role="status">Pick your goop!</div>
+        <div class="fluid-stage" id="fluidStage">
+          <canvas id="slimeCanvas" aria-label="A screen-filling slime surface. Drag, swirl, and fold it to play."></canvas>
+          <canvas id="toppingCanvas" aria-hidden="true"></canvas>
+          <div class="surface-grain" aria-hidden="true"></div>
+          <div class="slime-glaze" aria-hidden="true"></div>
+        </div>
+        <div class="hint-bubble" id="hintBubble" role="status">Pick your slime!</div>
 
         <section class="welcome-card" id="welcomeCard" aria-labelledby="welcomeTitle">
           <div class="mini-splat" aria-hidden="true"></div>
           <p class="eyebrow">Rye-Rye’s tiny slime toy</p>
           <h1 id="welcomeTitle">Make it.<br />Mix it. <em>Squish it.</em></h1>
           <p>Three tiny steps. Infinite wobbles.</p>
-          <button class="primary-button" id="startButton">MAKE SOME GOO <span aria-hidden="true">→</span></button>
+          <button class="primary-button" id="startButton">MAKE SLIME <span aria-hidden="true">→</span></button>
           <p class="sound-note">Best with your sound on <span aria-hidden="true">♪</span></p>
         </section>
 
-        <button class="exit-play" id="exitPlayButton">← MIX MORE</button>
+        <button class="exit-play" id="exitPlayButton">← ADD MORE</button>
         <div class="play-callout" id="playCallout" aria-hidden="true">
-          <span>PINCH</span><span>POKE</span><span>PULL</span>
+          <span>SWIRL</span><span>FOLD</span><span>MIX</span>
         </div>
       </section>
 
       <section class="maker-panel" id="makerPanel" aria-label="Slime maker steps">
         <nav class="step-tabs" aria-label="Slime making steps">
-          <button class="step-tab active" data-step="base" aria-selected="true"><b>1</b><span>GOOP</span></button>
+          <button class="step-tab active" data-step="base" aria-selected="true"><b>1</b><span>SLIME</span></button>
           <button class="step-tab" data-step="mix" aria-selected="false"><b>2</b><span>MIX-INS</span></button>
           <button class="step-tab" data-step="squish" aria-selected="false"><b>3</b><span>SQUISH!</span></button>
         </nav>
 
         <div class="step-content active" data-panel="base">
-          <div class="choice-heading"><strong>Choose your goo</strong><span>Tap a color</span></div>
+          <div class="choice-heading"><strong>Choose your slime</strong><span>Tap a color</span></div>
           <div class="choice-row" role="group" aria-label="Slime colors">
-            <button class="goo-choice selected" data-goo="berry" aria-label="Berry bounce slime" aria-pressed="true"><i class="berry"></i><span>Berry<br />Bounce</span></button>
-            <button class="goo-choice" data-goo="lime" aria-label="Lime fizz slime" aria-pressed="false"><i class="lime"></i><span>Lime<br />Fizz</span></button>
-            <button class="goo-choice" data-goo="mango" aria-label="Mango pop slime" aria-pressed="false"><i class="mango"></i><span>Mango<br />Pop</span></button>
-            <button class="goo-choice" data-goo="aqua" aria-label="Aqua wobble slime" aria-pressed="false"><i class="aqua"></i><span>Aqua<br />Wobble</span></button>
-            <button class="goo-choice" data-goo="galaxy" aria-label="Galaxy grape slime" aria-pressed="false"><i class="galaxy"></i><span>Galaxy<br />Grape</span></button>
+            <button class="slime-choice selected" data-slime="berry" aria-label="Berry bounce slime" aria-pressed="true"><i class="berry"></i><span>Berry<br />Bounce</span></button>
+            <button class="slime-choice" data-slime="lime" aria-label="Lime fizz slime" aria-pressed="false"><i class="lime"></i><span>Lime<br />Fizz</span></button>
+            <button class="slime-choice" data-slime="mango" aria-label="Mango pop slime" aria-pressed="false"><i class="mango"></i><span>Mango<br />Pop</span></button>
+            <button class="slime-choice" data-slime="aqua" aria-label="Aqua wobble slime" aria-pressed="false"><i class="aqua"></i><span>Aqua<br />Wobble</span></button>
+            <button class="slime-choice" data-slime="galaxy" aria-label="Galaxy grape slime" aria-pressed="false"><i class="galaxy"></i><span>Galaxy<br />Grape</span></button>
           </div>
         </div>
 
@@ -74,11 +79,11 @@
 
         <div class="step-content squish-panel" data-panel="squish">
           <div>
-            <p class="ready-kicker">YOUR GOO IS READY</p>
-            <strong>Use every finger!</strong>
-            <span>Pull the edges. Poke the middle. Try a pinch.</span>
+            <p class="ready-kicker">YOUR SLIME IS READY</p>
+            <strong>Swirl every color!</strong>
+            <span>Drag slowly. Draw loops. Fold the colors together.</span>
           </div>
-          <button class="primary-button squish-button" id="squishButton">GO FULL GOO <span aria-hidden="true">↗</span></button>
+          <button class="primary-button squish-button" id="squishButton">FILL THE SCREEN <span aria-hidden="true">↗</span></button>
         </div>
       </section>
     </main>
