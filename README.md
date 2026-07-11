@@ -13,6 +13,7 @@ A touch-first, bird’s-eye slime table for curious fingers. Pick a slime, toss 
 - Three kid-friendly steps: **Slime → Mix-ins → Squish**
 - A full-stage GPU fluid simulation with pressure projection, dye advection, curl, and slow viscosity-like damping
 - The slime fills the table instead of behaving like one round blob; every gesture folds and mixes the color field beneath it
+- A high-resistance touch follower trails the finger, caps each push, and keeps pulling briefly after release so the surface feels thick instead of watery
 - Real multi-touch stirring, with a separate fluid ribbon and topping wake for each finger
 - Procedural cloud-slime audio that repeats for as long as a finger or mouse is held down, layering low gooshes with tiny crunchy grains
 - Short vibration patterns through the browser Vibration API where supported, with visual/audio feedback everywhere else

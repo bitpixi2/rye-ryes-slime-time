@@ -9,8 +9,10 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Built the three-step mobile UI, multi-pointer fluid stirring, advected mix-ins, procedural Web Audio, vibration cues, persistence, and a true full-screen slime mode.
 - Added a repeating cloud-slime sound while a pointer is held: slow low-passed goosh grains plus short band-passed crunchy grains, with movement-sensitive intensity.
 - Prevented additive dye whitening by disabling the library’s duplicate input listeners, making most gesture splats velocity-only, using controlled saturated ribbons, clearing stale seed timers, and recreating the fluid context on stage-size changes.
+- Added high-resistance slime handling after tactile feedback: the simulated contact follows the finger with a capped 260 ms lag, continues catching up for 340 ms after release, uses broad low-force impulses with low curl, and heavily damps embedded mix-ins.
 - Renamed the app everywhere to “Rye-Rye’s Slime Time” at the user’s request.
 - Verified at 390x844 and 1280x720. The fluid covers the full stage, the full-screen mode reaches 390x844, a held pointer repeats sound bursts, 80+ slow stir events keep the field colored, two simultaneous pointers report two active touches and return to zero on release, and the browser console is error-free.
+- Verified the resistance model deterministically with two simultaneous pointers: after 200 ms the simulated contacts still trailed by 48.9 px, release created two settling drags, 400 ms of simulated time cleared both, and no console errors appeared.
 
 ## Complete
 

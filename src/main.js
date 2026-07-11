@@ -23,6 +23,8 @@ exitPlayButton.inert = true;
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const TAU = Math.PI * 2;
+const SLIME_TOUCH_LAG_MS = 260;
+const SLIME_MAX_STEP_PER_FRAME = 5.2;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
@@ -72,10 +74,12 @@ const state = {
   mixins: new Set(),
   muted: false,
   activePointers: new Map(),
+  settlingPointers: [],
   webglAvailable: true,
   splatCount: 0,
   stirCount: 0,
   interactionEnergy: 0,
+  averagePointerLag: 0,
   toppingWidth: 0,
   toppingHeight: 0,
   toppingDpr: 1,
@@ -322,16 +326,16 @@ class ToppingLayer {
     const ny = y / state.toppingHeight;
     const ndx = dx / state.toppingWidth;
     const ndy = dy / state.toppingHeight;
-    const radius = 0.22;
+    const radius = 0.15;
     for (const particle of this.particles) {
       const offsetX = particle.x - nx;
       const offsetY = particle.y - ny;
       const distance = Math.hypot(offsetX, offsetY);
       if (distance > radius) continue;
       const influence = (1 - distance / radius) ** 2 * force;
-      particle.vx += ndx * influence * 1.9 - offsetY * influence * 0.012;
-      particle.vy += ndy * influence * 1.9 + offsetX * influence * 0.012;
-      particle.spin += (ndx - ndy) * influence * 0.03;
+      particle.vx += ndx * influence * 0.72 - offsetY * influence * 0.003;
+      particle.vy += ndy * influence * 0.72 + offsetX * influence * 0.003;
+      particle.spin += (ndx - ndy) * influence * 0.008;
     }
   }
 
@@ -352,12 +356,12 @@ class ToppingLayer {
     const frame = clamp(milliseconds / 16.6667, 0.2, 2.4);
     for (let index = 0; index < this.particles.length; index += 1) {
       const particle = this.particles[index];
-      const ambient = prefersReducedMotion ? 0 : 0.0000025;
+      const ambient = prefersReducedMotion ? 0 : 0.00000035;
       particle.vx += Math.sin(state.time * 0.00034 + particle.phase + particle.y * 7) * ambient * frame;
       particle.vy += Math.cos(state.time * 0.00029 + particle.phase + particle.x * 8) * ambient * frame;
-      particle.vx *= 0.982 ** frame;
-      particle.vy *= 0.982 ** frame;
-      particle.spin *= 0.992 ** frame;
+      particle.vx *= 0.91 ** frame;
+      particle.vy *= 0.91 ** frame;
+      particle.spin *= 0.94 ** frame;
       particle.x += particle.vx * frame;
       particle.y += particle.vy * frame;
       particle.angle += particle.spin * frame;
@@ -486,12 +490,12 @@ function fluidConfig() {
     simResolution: isMobile ? 128 : 196,
     dyeResolution: isMobile ? 512 : 1024,
     densityDissipation: 0.16,
-    velocityDissipation: 3.1,
-    pressure: 0.92,
-    pressureIterations: isMobile ? 26 : 34,
-    curl: prefersReducedMotion ? 2 : 10.5,
-    splatRadius: isMobile ? 2.25 : 1.8,
-    splatForce: isMobile ? 2900 : 3400,
+    velocityDissipation: 4.8,
+    pressure: 0.95,
+    pressureIterations: isMobile ? 30 : 38,
+    curl: prefersReducedMotion ? 1 : 3.5,
+    splatRadius: isMobile ? 3.6 : 3,
+    splatForce: isMobile ? 1600 : 1900,
     shading: true,
     colorful: true,
     colorUpdateSpeed: 0.45,
@@ -527,6 +531,8 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
   try {
     clearSeedTimers();
     state.activePointers.clear();
+    state.settlingPointers = [];
+    state.averagePointerLag = 0;
     if (fluid) {
       const oldSimulation = fluid.simulation;
       fluid.stop();
@@ -574,13 +580,15 @@ function seedSlime(amount = 10) {
       Math.sin(angle) * 12,
       theme.dyePalette[index % theme.dyePalette.length],
       0.14,
-      34,
+      14,
     );
   }
   scheduleSeed(() => {
-    fluid?.setConfig({ splatRadius: isMobile ? 2.25 : 1.8 });
+    fluid?.setConfig({ splatRadius: isMobile ? 2.6 : 2.2 });
     addSwirlGrid(state.playMode ? 12 : 10, 0.13);
+    scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 3.6 : 3 }), 90);
   }, 80);
+  scheduleSeed(addMarblingVeins, 360);
 }
 
 function normalizedFluidColor(hex, intensity = 0.18) {
@@ -591,7 +599,7 @@ function normalizedFluidColor(hex, intensity = 0.18) {
   return { r: red * intensity, g: green * intensity, b: blue * intensity };
 }
 
-function localFluidSplat(x, y, dx, dy, color, intensity = 0.12, forceScale = 18) {
+function localFluidSplat(x, y, dx, dy, color, intensity = 0.12, forceScale = 7.5) {
   if (!fluid || !state.toppingWidth || !state.toppingHeight) return;
   const palette = themes[state.theme].dyePalette;
   const selectedColor = color || palette[Math.floor(Math.random() * palette.length)];
@@ -599,8 +607,8 @@ function localFluidSplat(x, y, dx, dy, color, intensity = 0.12, forceScale = 18)
   fluid.simulation.splat(
     clamp(x / state.toppingWidth, 0, 1),
     clamp(1 - y / state.toppingHeight, 0, 1),
-    clamp(dx * forceScale, -1000, 1000),
-    clamp(-dy * forceScale, -1000, 1000),
+    clamp(dx * forceScale, -420, 420),
+    clamp(-dy * forceScale, -420, 420),
     normalizedFluidColor(selectedColor, intensity),
   );
   state.splatCount += 1;
@@ -613,8 +621,29 @@ function addSwirlGrid(count = 6, intensity = 0.06) {
     const x = state.toppingWidth * (0.12 + ((index * 0.618) % 0.76));
     const y = state.toppingHeight * (0.13 + ((index * 0.414) % 0.74));
     const angle = index * 2.1;
-    localFluidSplat(x, y, Math.cos(angle) * 32, Math.sin(angle) * 32, theme.dyePalette[index % theme.dyePalette.length], intensity, 34);
+    localFluidSplat(x, y, Math.cos(angle) * 32, Math.sin(angle) * 32, theme.dyePalette[index % theme.dyePalette.length], intensity, 14);
   }
+}
+
+function addMarblingVeins() {
+  if (!fluid) return;
+  const theme = themes[state.theme];
+  const veinColors = [0, 3, 1];
+  fluid.setConfig({ splatRadius: isMobile ? 1.8 : 1.55 });
+  for (let band = 0; band < 3; band += 1) {
+    const color = theme.dyePalette[veinColors[band] % theme.dyePalette.length];
+    for (let point = 0; point < 32; point += 1) {
+      const t = point / 31;
+      const phase = band * 1.7;
+      const x = state.toppingWidth * (0.035 + t * 0.93);
+      const y = state.toppingHeight * (
+        0.18 + band * 0.31 + Math.sin(t * TAU * (1.35 + band * 0.2) + phase) * (0.055 + band * 0.008)
+      );
+      const tangentY = Math.cos(t * TAU * (1.35 + band * 0.2) + phase) * 0.8;
+      localFluidSplat(x, y, 0.7, tangentY * 0.5, color, 0.075, 1.2);
+    }
+  }
+  scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 3.6 : 3 }), 70);
 }
 
 function splashMix(type) {
@@ -647,9 +676,13 @@ function pointerDown(event) {
   try { slimeCanvas.setPointerCapture?.(event.pointerId); } catch { /* Capture is optional. */ }
   const palette = themes[state.theme].dyePalette;
   const colorIndex = (state.splatCount + state.activePointers.size) % palette.length;
+  state.settlingPointers = state.settlingPointers.filter((pointer) => pointer.id !== event.pointerId);
   state.activePointers.set(event.pointerId, {
+    id: event.pointerId,
     x: position.x,
     y: position.y,
+    slimeX: position.x,
+    slimeY: position.y,
     lastX: position.x,
     lastY: position.y,
     speed: 0,
@@ -658,8 +691,8 @@ function pointerDown(event) {
     color: palette[colorIndex],
   });
   const nudge = event.pressure > 0 ? event.pressure * 8 : 4;
-  localFluidSplat(position.x, position.y, nudge, -nudge * 0.4, palette[colorIndex], 0.025);
-  toppings.stir(position.x, position.y, nudge, -nudge, 1.25);
+  localFluidSplat(position.x, position.y, nudge, -nudge * 0.4, palette[colorIndex], 0.02, 4);
+  toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
   audio.squelch(0.44 + state.activePointers.size * 0.12, 1 - state.activePointers.size * 0.06);
   haptic(state.activePointers.size > 1 ? [8, 18, 10] : 9);
   hideHint();
@@ -678,16 +711,6 @@ function pointerMove(event) {
   pointer.lastX = position.x;
   pointer.lastY = position.y;
   pointer.speed = speed;
-  pointer.moveCount += 1;
-  if (pointer.moveCount % 24 === 0) {
-    const palette = themes[state.theme].dyePalette;
-    pointer.colorIndex = (pointer.colorIndex + 1) % palette.length;
-    pointer.color = palette[pointer.colorIndex];
-  }
-  const ribbonIntensity = pointer.moveCount % 6 === 0 ? 0.05 : 0;
-  localFluidSplat(position.x, position.y, dx, dy, pointer.color, ribbonIntensity);
-  toppings.stir(position.x, position.y, dx, dy, 1 + state.activePointers.size * 0.22);
-  state.stirCount += 1;
   state.interactionEnergy = clamp(state.interactionEnergy + speed * 0.018, 0, 10);
   audio.wetDrag(speed, state.activePointers.size);
   if (speed > 13 && performance.now() % 130 < 18) haptic(3);
@@ -697,6 +720,8 @@ function pointerUp(event) {
   const pointer = state.activePointers.get(event.pointerId);
   if (!pointer) return;
   state.activePointers.delete(event.pointerId);
+  pointer.settleRemaining = 340;
+  state.settlingPointers.push(pointer);
   audio.release(pointer.speed);
   haptic([4, 20, 7]);
 }
@@ -710,7 +735,7 @@ function handleCanvasKey(event) {
     event.preventDefault();
     const [dx, dy] = directions[event.key];
     localFluidSplat(centerX, centerY, dx, dy, themes[state.theme].dyePalette[0], 0);
-    toppings.stir(centerX, centerY, dx, dy, 1.4);
+    toppings.stir(centerX, centerY, dx, dy, 0.7);
     audio.wetDrag(24, 1);
   }
   if (event.key === ' ' || event.key === 'Enter') {
@@ -730,20 +755,74 @@ function resizeToppings() {
   toppings.render();
 }
 
+function updatePointerPhysics(dt) {
+  const touchCount = state.activePointers.size;
+  const draggingPointers = [...state.activePointers.values(), ...state.settlingPointers];
+  if (!draggingPointers.length) {
+    state.averagePointerLag = 0;
+    return;
+  }
+
+  const frameScale = dt / 16.6667;
+  const followAmount = 1 - Math.exp(-dt / SLIME_TOUCH_LAG_MS);
+  const maxStep = SLIME_MAX_STEP_PER_FRAME * frameScale;
+  let heldSpeed = 0;
+  let totalLag = 0;
+
+  draggingPointers.forEach((pointer) => {
+    const isActive = state.activePointers.has(pointer.id);
+    if (isActive) heldSpeed += pointer.speed;
+    pointer.speed *= 0.84 ** frameScale;
+
+    const offsetX = pointer.x - pointer.slimeX;
+    const offsetY = pointer.y - pointer.slimeY;
+    const lag = Math.hypot(offsetX, offsetY);
+    if (isActive) totalLag += lag;
+    if (lag < 0.08) return;
+
+    let moveX = offsetX * followAmount;
+    let moveY = offsetY * followAmount;
+    const requestedStep = Math.hypot(moveX, moveY);
+    if (requestedStep > maxStep) {
+      const limit = maxStep / requestedStep;
+      moveX *= limit;
+      moveY *= limit;
+    }
+
+    pointer.slimeX += moveX;
+    pointer.slimeY += moveY;
+    pointer.moveCount += 1;
+    if (pointer.moveCount % 36 === 0) {
+      const palette = themes[state.theme].dyePalette;
+      pointer.colorIndex = (pointer.colorIndex + 1) % palette.length;
+      pointer.color = palette[pointer.colorIndex];
+    }
+
+    const ribbonIntensity = pointer.moveCount % 12 === 0 ? 0.032 : 0;
+    localFluidSplat(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.color, ribbonIntensity, 7.5);
+    toppings.stir(pointer.slimeX, pointer.slimeY, moveX, moveY, 0.55 + Math.max(1, touchCount) * 0.08);
+    state.stirCount += 1;
+  });
+
+  state.settlingPointers = state.settlingPointers.filter((pointer) => {
+    pointer.settleRemaining -= dt;
+    return pointer.settleRemaining > 0 && Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY) > 0.35;
+  });
+  state.averagePointerLag = touchCount ? totalLag / touchCount : 0;
+  if (touchCount) audio.wetDrag(Math.max(3.5, heldSpeed / touchCount), touchCount);
+}
+
+function updateGame(dt) {
+  state.time += dt;
+  state.interactionEnergy *= 0.982 ** (dt / 16.6667);
+  updatePointerPhysics(dt);
+  toppings.update(dt);
+}
+
 function frame(timestamp) {
   const dt = state.lastTimestamp ? clamp(timestamp - state.lastTimestamp, 8, 34) : 16.6667;
   state.lastTimestamp = timestamp;
-  state.time += dt;
-  state.interactionEnergy *= 0.982 ** (dt / 16.6667);
-  if (state.activePointers.size) {
-    let heldSpeed = 0;
-    state.activePointers.forEach((pointer) => {
-      heldSpeed += pointer.speed;
-      pointer.speed *= 0.84 ** (dt / 16.6667);
-    });
-    audio.wetDrag(Math.max(3.5, heldSpeed / state.activePointers.size), state.activePointers.size);
-  }
-  toppings.update(dt);
+  updateGame(dt);
   toppings.render();
   requestAnimationFrame(frame);
 }
@@ -951,7 +1030,10 @@ window.render_game_to_text = () => JSON.stringify({
     splatCount: state.splatCount,
     stirCount: state.stirCount,
     interactionEnergy: Number(state.interactionEnergy.toFixed(2)),
+    averagePointerLag: Number(state.averagePointerLag.toFixed(1)),
+    motionProfile: 'high resistance: 260ms touch lag, broad impulses, strong velocity damping, low curl',
     activeTouches: state.activePointers.size,
+    settlingDrags: state.settlingPointers.length,
   },
   toppings: {
     total: toppings.particles.length,
@@ -965,9 +1047,7 @@ window.render_game_to_text = () => JSON.stringify({
 window.advanceTime = (milliseconds) => {
   const steps = Math.max(1, Math.round(milliseconds / 16.6667));
   for (let index = 0; index < steps; index += 1) {
-    state.time += 16.6667;
-    state.interactionEnergy *= 0.982;
-    toppings.update(16.6667);
+    updateGame(16.6667);
   }
   toppings.render();
 };
