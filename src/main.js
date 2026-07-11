@@ -14,6 +14,10 @@ const hintBubble = document.querySelector('#hintBubble');
 const soundButton = document.querySelector('#soundButton');
 const resetButton = document.querySelector('#resetButton');
 const exitPlayButton = document.querySelector('#exitPlayButton');
+const previousStepButton = document.querySelector('#previousStepButton');
+const nextStepButton = document.querySelector('#nextStepButton');
+const stepCount = document.querySelector('#stepCount');
+const stepName = document.querySelector('#stepName');
 
 exitPlayButton.inert = true;
 
@@ -832,16 +836,34 @@ function saveRecipe() {
   }
 }
 
-function setStep(step) {
+const stepOrder = ['base', 'mix', 'squish'];
+const stepDetails = {
+  base: { name: 'CHOOSE SLIME', shortName: 'choose slime', hint: '1 · Choose your slime!' },
+  mix: { name: 'ADD MIX-INS', shortName: 'add mix-ins', hint: '2 · Add your mix-ins!' },
+  squish: { name: 'READY TO SQUISH', shortName: 'squish your slime', hint: '3 · Ready to squish!' },
+};
+
+function setStep(step, { feedback = true } = {}) {
+  const stepIndex = stepOrder.indexOf(step);
+  if (stepIndex < 0) return;
   state.step = step;
-  document.querySelectorAll('.step-tab').forEach((button) => {
-    const selected = button.dataset.step === step;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-selected', String(selected));
-  });
   document.querySelectorAll('.step-content').forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === step));
-  audio.release(step === 'base' ? 5 : step === 'mix' ? 9 : 13);
-  haptic(6);
+  stepCount.textContent = `STEP ${stepIndex + 1} OF ${stepOrder.length}`;
+  stepName.textContent = stepDetails[step].name;
+  previousStepButton.disabled = stepIndex === 0;
+  nextStepButton.disabled = stepIndex === stepOrder.length - 1;
+  previousStepButton.setAttribute('aria-label', stepIndex === 0 ? 'No previous step' : `Back to ${stepDetails[stepOrder[stepIndex - 1]].shortName}`);
+  nextStepButton.setAttribute('aria-label', stepIndex === stepOrder.length - 1 ? 'All steps complete' : `Next step: ${stepDetails[stepOrder[stepIndex + 1]].shortName}`);
+  if (feedback) {
+    audio.release(step === 'base' ? 5 : step === 'mix' ? 9 : 13);
+    haptic(6);
+    showHint(stepDetails[step].hint, 1200);
+  }
+}
+
+function moveStep(direction) {
+  const nextIndex = clamp(stepOrder.indexOf(state.step) + direction, 0, stepOrder.length - 1);
+  if (stepOrder[nextIndex] !== state.step) setStep(stepOrder[nextIndex]);
 }
 
 function showHint(message, duration = 1500) {
@@ -912,6 +934,7 @@ function exitPlayMode() {
 function goHome() {
   if (state.playMode) exitPlayMode();
   state.started = false;
+  setStep('base', { feedback: false });
   welcomeCard.classList.remove('hidden');
   welcomeCard.inert = false;
   welcomeCard.removeAttribute('aria-hidden');
@@ -935,6 +958,8 @@ document.querySelector('#startButton').addEventListener('click', startMaking);
 makerPanel.addEventListener('click', () => {
   if (!state.started) startMaking();
 }, { capture: true });
+previousStepButton.addEventListener('click', () => moveStep(-1));
+nextStepButton.addEventListener('click', () => moveStep(1));
 document.querySelector('#squishButton').addEventListener('click', enterPlayMode);
 document.querySelector('#homeButton').addEventListener('click', goHome);
 exitPlayButton.addEventListener('click', exitPlayMode);
@@ -952,8 +977,6 @@ soundButton.addEventListener('click', () => {
   haptic(5);
   saveRecipe();
 });
-
-document.querySelectorAll('.step-tab').forEach((button) => button.addEventListener('click', () => setStep(button.dataset.step)));
 
 document.querySelectorAll('.slime-choice').forEach((button) => {
   const selected = button.dataset.slime === state.theme;

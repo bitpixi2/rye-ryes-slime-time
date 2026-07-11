@@ -12,6 +12,8 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Added high-resistance slime handling after tactile feedback: the simulated contact follows the finger with a capped 260 ms lag, continues catching up for 340 ms after release, uses broad low-force impulses with low curl, and heavily damps embedded mix-ins.
 - Renamed the app everywhere to “Rye-Rye’s Slime Time” at the user’s request.
 - Simplified the welcome card to only the app title, Make Slime action, and sound note, and moved the usable slime-making menu up into the empty lower strip.
+- Replaced the three clickable step tabs with large kid-friendly back and next arrows, a simple current-step label, and a linear three-step flow.
+- Verified the arrow journey at 390x664: step labels, contextual hints, disabled endpoints, backward navigation, edge-safe final action, and the transition into 390x664 full-screen slime all pass with no browser errors.
 - Verified at 390x844 and 1280x720. The fluid covers the full stage, the full-screen mode reaches 390x844, a held pointer repeats sound bursts, 80+ slow stir events keep the field colored, two simultaneous pointers report two active touches and return to zero on release, and the browser console is error-free.
 - Verified the resistance model deterministically with two simultaneous pointers: after 200 ms the simulated contacts still trailed by 48.9 px, release created two settling drags, 400 ms of simulated time cleared both, and no console errors appeared.
 
