@@ -12,8 +12,8 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Renamed the app everywhere to “Rye-Rye’s Slime Time” at the user’s request.
 - Verified at 390x844 and 1280x720. The complete mobile flow renders correctly, generated mix-ins stay clipped to the blob, two simultaneous pointer grabs stretch it to the screen edges, releasing returns activeTouches to 0 and restores the target area, and the browser console is error-free.
 
-## Next
+## Complete
 
-- Finish the physics/audio/input implementation.
-- Run mobile Playwright interaction and screenshot QA.
-- Create and publish the public GitHub repository after GitHub authentication is available.
+- Production build passes.
+- Mobile and desktop interaction QA passes with no browser console errors.
+- Public repository: https://github.com/bitpixi2/rye-ryes-slime-time
