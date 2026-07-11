@@ -29,6 +29,14 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Replaced the fake front-facing Cloud Slime shader plane with a closed Three.js Marching Cubes volume, a perspective bird's-eye camera, physical material lighting, real sidewalls, contact shadows, slow persistent touch folds, and raised fibrous snow-slime ridges.
 - Removed the sky-cloud icon and relabeled Cloud Slime as `Snowy + thick`; its initial state has no sprinkle-like particles or watery glaze overlay.
 - Verified the new cloud volume at 390x664, 320x568, and full-screen 390x844, including automatic arrival on the color page, 0/5 initial mix-ins, a slow diagonal pull that produced a raised fold, full palette reachability, and zero browser errors.
+- Added two intrinsic texture modes from real slime references: Crackle Shell starts as a smooth wax film that permanently fractures over soft slime, while Bingsu Crunch contains its own dense field of iridescent tube beads without affecting the 0/5 user mix-in counters.
+- Added distinct procedural ASMR profiles: Wax uses a one-time brittle snap followed by smaller dry crackles, and Bingsu uses randomized high-mid crunch grains with thick wet body and occasional trapped-air pops.
+- Reworked Cloud Slime stability: idle geometry no longer rebuilds, touch remeshing is capped to a fixed cadence with interpolated fold strength, field-only blur was removed to prevent black zero-color facets, shadow updates are event-driven, and the projected mass now overscans tall canvases.
+- Expanded the type carousel to five kid-friendly choices with phone-safe left-aligned scrolling, snap points, and a visible `Swipe for more` cue.
+- Deterministic Wax QA confirmed permanent progression from 2 fracture bursts/91 crack segments/72% shell integrity to 4 bursts/156 segments/51% integrity; procedural audio produced 39 brittle crack grains and no browser errors.
+- Deterministic Bingsu QA confirmed 220 intrinsic tube beads on mobile and 320 on desktop, all optional mix-ins at 0/5, dense repeated crunch grains plus trapped-air pops, visible compression dimples, and no browser errors.
+- Cloud idle QA held `geometryRebuilds` at exactly 1 across repeated captures with zero active folds, proving the former idle remesh jitter is gone; maker and full-screen captures now overscan the canvas instead of leaving table bands.
+- Wax cracks and Bingsu bead positions now survive the transition into and back out of full-screen play; only reset or type re-entry creates a fresh shell/texture.
 
 ## Complete
 
