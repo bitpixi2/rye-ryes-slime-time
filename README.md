@@ -4,6 +4,10 @@
 
 A tiny, touch-first slime maker for curious fingers. Pick a goo, toss in candy, then pull, poke, pinch, and wobble it across the whole screen.
 
+## Play it
+
+**[Play Rye-Rye’s Slime Time](https://new-project-please-just-a-simple.vercel.app)**
+
 ## What makes it goopy
 
 - Three kid-friendly steps: **Goop → Mix-ins → Squish**

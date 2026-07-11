@@ -6,3 +6,4 @@ output/
 goop-mobile-*.png
 /goop-*.png
 /rye-ryes-*.png
+.vercel
