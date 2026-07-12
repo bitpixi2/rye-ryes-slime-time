@@ -163,41 +163,6 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 }
 .hint-bubble.show { opacity: 1; transform: translate(-50%, 0) rotate(-1deg); }
 
-.welcome-card {
-  position: absolute;
-  z-index: 20;
-  inset: 50% auto auto 50%;
-  width: min(88vw, 430px);
-  transform: translate(-50%, -50%);
-  text-align: center;
-  padding: 34px 24px 25px;
-  background: rgba(255,255,255,.86);
-  backdrop-filter: blur(18px);
-  border: 1px solid rgba(255,255,255,.9);
-  border-radius: 34px;
-  box-shadow: 0 20px 70px rgba(82,40,107,.18), inset 0 1px 0 #fff;
-  transition: opacity .3s ease, transform .35s cubic-bezier(.2,.8,.2,1);
-}
-.welcome-card.hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -44%) scale(.88); transition: opacity .3s ease, transform .35s cubic-bezier(.2,.8,.2,1), visibility 0s .35s; }
-.welcome-card h1 { margin: 0 0 26px; font-size: clamp(36px, 10.5vw, 56px); line-height: .94; letter-spacing: -3px; text-wrap: balance; }
-
-.primary-button {
-  min-height: 55px;
-  border: 0;
-  border-radius: 18px;
-  color: #fff;
-  background: linear-gradient(135deg, #823df3, #b04fff);
-  padding: 0 23px;
-  font-size: 13px;
-  letter-spacing: 1px;
-  box-shadow: 0 8px 0 #5824b6, 0 14px 25px rgba(106,52,194,.25);
-  cursor: pointer;
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-.primary-button span { margin-left: 10px; font-size: 18px; }
-.primary-button:active { transform: translateY(6px) scale(.98); box-shadow: 0 2px 0 #5824b6, 0 7px 15px rgba(106,52,194,.2); }
-.sound-note { margin: 16px 0 0; font-size: 10px; color: #8a7d91; letter-spacing: .6px; text-transform: uppercase; }
-
 .maker-panel {
   position: relative;
   z-index: 15;
@@ -334,7 +299,6 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   .choice-heading { display: none; }
   .step-navigation { margin-bottom: 3px; }
   .slime-choice i, .mix-choice i { width: 39px; height: 39px; }
-  .welcome-card { padding: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

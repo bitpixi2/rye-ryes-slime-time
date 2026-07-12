@@ -14,7 +14,6 @@ let slimeCanvas = document.querySelector('#slimeCanvas');
 const toppingCanvas = document.querySelector('#toppingCanvas');
 const toppingContext = toppingCanvas.getContext('2d');
 const makerPanel = document.querySelector('#makerPanel');
-const welcomeCard = document.querySelector('#welcomeCard');
 const hintBubble = document.querySelector('#hintBubble');
 const soundButton = document.querySelector('#soundButton');
 const resetButton = document.querySelector('#resetButton');
@@ -29,7 +28,9 @@ exitPlayButton.inert = true;
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-const desktopHoverEnabled = !isMobile && matchMedia('(pointer: fine)').matches;
+// Desktop uses the same explicit press-and-drag contact model as touch.
+// The former cursor-hover contact remains disabled because it was unreliable.
+const desktopHoverEnabled = false;
 const DESKTOP_HOVER_POINTER_ID = 'desktop-hover';
 const TAU = Math.PI * 2;
 const SLIME_TYPES = ['liquidy', 'cloud3d', 'wax', 'bingsu', 'putty'];
@@ -87,7 +88,7 @@ const themes = {
 };
 
 const state = {
-  started: false,
+  started: true,
   playMode: false,
   step: 'type',
   typeChosen: false,
@@ -2210,20 +2211,6 @@ function hideHint() {
   hintBubble.classList.remove('show');
 }
 
-function startMaking() {
-  audio.init();
-  audio.squelch(0.68, 0.92);
-  sampleLoops.selectMode(state.slimeType);
-  if (state.typeChosen) sampleLoops.start(state.slimeType);
-  sampleLoops.playDiscovery(0.8);
-  haptic([10, 24, 15]);
-  state.started = true;
-  welcomeCard.classList.add('hidden');
-  welcomeCard.inert = true;
-  welcomeCard.setAttribute('aria-hidden', 'true');
-  showHint(stepDetails[state.step].hint, 1800);
-}
-
 function enterPlayMode() {
   if (!state.started || state.playMode) return;
   sampleLoops.selectMode(state.slimeType);
@@ -2278,7 +2265,7 @@ function goHome() {
   if (state.playMode) exitPlayMode();
   clearDesktopHoverContact({ sound: false });
   sampleLoops.stop();
-  state.started = false;
+  state.started = true;
   state.typeChosen = false;
   document.querySelectorAll('.type-choice').forEach((choice) => {
     choice.classList.remove('selected');
@@ -2286,9 +2273,6 @@ function goHome() {
   });
   clearMixins();
   setStep('type', { feedback: false });
-  welcomeCard.classList.remove('hidden');
-  welcomeCard.inert = false;
-  welcomeCard.removeAttribute('aria-hidden');
   makerPanel.classList.remove('play-mode');
   makerPanel.inert = false;
   makerPanel.removeAttribute('aria-hidden');
@@ -2306,10 +2290,6 @@ function resetSlime() {
   showHint('Fresh slime!', 1100);
 }
 
-document.querySelector('#startButton').addEventListener('click', startMaking);
-makerPanel.addEventListener('click', () => {
-  if (!state.started) startMaking();
-}, { capture: true });
 previousStepButton.addEventListener('click', () => moveStep(-1));
 nextStepButton.addEventListener('click', () => moveStep(1));
 document.querySelector('#homeButton').addEventListener('click', goHome);
@@ -2348,6 +2328,7 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     initFluid({ replace: true, seedDelay: 100 });
     sampleLoops.selectMode(state.slimeType);
     sampleLoops.start(state.slimeType);
+    sampleLoops.playDiscovery(0.65);
     const previewPitch = state.slimeType === 'cloud3d' ? 0.72
       : state.slimeType === 'putty' ? 0.88
         : state.slimeType === 'wax' ? 0.8
