@@ -2,6 +2,7 @@ import WebGLFluidEnhanced from 'webgl-fluid-enhanced';
 import * as THREE from 'three';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import { StretchyPutty3DEngine } from './putty-3d-engine.js';
+import { BingsuSlime3DEngine } from './bingsu-3d-engine.js';
 import { SampleLoopAudio } from './sample-loop-audio.js';
 import './style.css';
 
@@ -521,7 +522,7 @@ class ToppingLayer {
     return (isMobile ? mobileCounts : desktopCounts)[type] || 20;
   }
 
-  syncMixins() {
+  syncMixins({ recolor = false } = {}) {
     this.palette = themes[state.theme].palette;
     const baseTexture = this.particles.filter((particle) => particle.type === 'bubble');
     const syncedParticles = [...baseTexture];
@@ -532,6 +533,11 @@ class ToppingLayer {
       for (let index = existing.length; index < desired; index += 1) syncedParticles.push(this.makeParticle(type));
     }
     this.particles = syncedParticles;
+    if (recolor) {
+      this.particles.forEach((particle, index) => {
+        particle.color = this.palette[(index * 3 + MIX_TYPES.indexOf(particle.type) + 1) % this.palette.length];
+      });
+    }
     this.attachToMaterial(this.particles);
   }
 
@@ -1279,7 +1285,7 @@ class CloudSlimeEngine {
   }
 }
 
-class BingsuSlimeEngine {
+class LegacyBingsuSlimeEngine {
   constructor(canvas) {
     this.canvas = canvas;
     this.context = canvas.getContext('2d', { alpha: false });
@@ -1735,8 +1741,10 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     slimeCanvas.style.backgroundColor = themes[state.theme].base;
     fluidStage.classList.remove('fluid-fallback');
     fluidStage.classList.toggle('cloud-volume', state.slimeType === 'cloud3d');
+    playground.classList.toggle('cloud-volume', state.slimeType === 'cloud3d');
     fluidStage.classList.toggle('putty-mode', state.slimeType === 'putty');
     fluidStage.classList.toggle('bingsu-mode', state.slimeType === 'bingsu');
+    resizeToppings();
     if (state.slimeType === 'cloud3d') {
       cloudSlime = new CloudSlimeEngine(slimeCanvas);
       cloudSlime.resize(state.toppingWidth, state.toppingHeight);
@@ -1757,7 +1765,10 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
       return;
     }
     if (state.slimeType === 'bingsu') {
-      bingsuSlime = new BingsuSlimeEngine(slimeCanvas);
+      bingsuSlime = new BingsuSlime3DEngine(slimeCanvas, {
+        getTheme: () => themes[state.theme],
+        isMobile,
+      });
       bingsuSlime.resize(state.toppingWidth, state.toppingHeight);
       toppings.reanchorAll();
       bindSlimeInput();
@@ -2346,7 +2357,7 @@ const stepOrder = ['type', 'base', 'mix', 'squish'];
 const stepDetails = {
   type: { name: 'CHOOSE A TYPE', shortName: 'choose a slime type', hint: '1 · Pick how it feels!' },
   base: { name: 'CHOOSE A COLOR', shortName: 'choose slime color', hint: '2 · Choose your colors!' },
-  mix: { name: 'ADD MIX-INS', shortName: 'add mix-ins', hint: '3 · Add your mix-ins!' },
+  mix: { name: 'ADD TOPPINGS', shortName: 'add toppings', hint: '3 · Add your toppings!' },
   squish: { name: 'READY TO SQUISH', shortName: 'squish your slime', hint: '4 · Ready to squish!' },
 };
 
@@ -2361,7 +2372,7 @@ function setStep(step, { feedback = true } = {}) {
   const waitingForType = step === 'type' && !state.typeChosen;
   nextStepButton.hidden = waitingForType || stepIndex === stepOrder.length - 1;
   nextStepButton.disabled = waitingForType || stepIndex === stepOrder.length - 1;
-  nextStepLabel.textContent = step === 'type' ? 'COLORS' : step === 'base' ? 'MIX-INS' : step === 'mix' ? 'FILL SCREEN' : 'DONE';
+  nextStepLabel.textContent = step === 'type' ? 'COLORS' : step === 'base' ? 'TOPPINGS' : step === 'mix' ? 'FILL SCREEN' : 'DONE';
   previousStepButton.setAttribute('aria-label', stepIndex === 0 ? 'No previous step' : `Back to ${stepDetails[stepOrder[stepIndex - 1]].shortName}`);
   nextStepButton.setAttribute('aria-label', stepIndex === stepOrder.length - 1 ? 'All steps complete' : `Next step: ${stepDetails[stepOrder[stepIndex + 1]].shortName}`);
   if (feedback) {
@@ -2535,7 +2546,7 @@ document.querySelectorAll('.slime-choice').forEach((button) => {
       choice.setAttribute('aria-pressed', String(isSelected));
     });
     toppings.palette = themes[state.theme].palette;
-    toppings.syncMixins();
+    toppings.syncMixins({ recolor: true });
     renderMixPreviews();
     initFluid({ replace: true, seedDelay: 120 });
     audio.squelch(0.7, 0.78 + Math.random() * 0.25);
@@ -2612,7 +2623,7 @@ window.render_game_to_text = () => JSON.stringify({
     engine: !state.webglAvailable ? 'animated gradient fallback' : ({
       liquidy: 'WebGL Fluid Enhanced Eulerian solver',
       cloud3d: 'Three.js Marching Cubes closed volumetric metaball surface with physical lighting',
-      bingsu: 'Canvas2D damped structural tube-bead field in translucent thick slime',
+      bingsu: 'Three.js layered 3D bingsu bed with compressible raised cells and embedded beads',
       putty: 'Three.js Catmull-Rom TubeGeometry with two independently grabbable 3D ends',
     })[state.slimeType],
     coverage: 'full-stage',
@@ -2649,6 +2660,7 @@ window.render_game_to_text = () => JSON.stringify({
       type,
       batches: state.mixins.get(type),
       particles: toppings.particles.filter((particle) => particle.type === type).length,
+      colors: [...new Set(toppings.particles.filter((particle) => particle.type === type).map((particle) => particle.color))],
     })),
   },
   structuralTexture: state.slimeType === 'cloud3d' ? {
@@ -2658,7 +2670,7 @@ window.render_game_to_text = () => JSON.stringify({
     stack: cloudSlime?.stackMetrics || null,
     rebuildCadence: isMobile ? 'fixed 25fps while deforming; frozen while idle' : 'fixed 30fps while deforming; frozen while idle',
   } : state.slimeType === 'bingsu' ? {
-    kind: 'intrinsic iridescent tube beads with permanent session-long dye trails',
+    kind: 'layered 3D bingsu chunks that compress downward under pressure',
     beadCount: bingsuSlime?.beads.length || 0,
     compression: Number((bingsuSlime?.compression || 0).toFixed(2)),
     dyeTrails: bingsuSlime?.dyeTrails.length || 0,

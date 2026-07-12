@@ -93,6 +93,8 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 
 .playground { position: relative; min-height: 0; overflow: hidden; isolation: isolate; background: #a949e8; }
 .fluid-stage { position: absolute !important; inset: 0; overflow: hidden; touch-action: none; cursor: grab; background: #a949e8; }
+.app-shell:not(.full-slime) .playground.cloud-volume { overflow: visible; }
+.app-shell:not(.full-slime) .playground.cloud-volume .fluid-stage { top: -72px; }
 .fluid-stage:active { cursor: grabbing; }
 #slimeCanvas,
 #toppingCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }

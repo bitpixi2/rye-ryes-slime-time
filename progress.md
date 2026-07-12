@@ -62,6 +62,9 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Rotated the requested uploaded sound assignments in order: Glowy now uses the former Squishy crunchy loop/accent, Squishy uses the former Stretchy slosh, and Stretchy uses the former Glowy gel loop; Blobby is unchanged.
 - Removed Stretchy's poke, press-dimple, and hover-dent modes. Pressing anywhere on the visible strand now grabs its nearest available end, so desktop press-and-drag consistently stretches the material.
 - Reduced Stretchy's resting span from 76% to 68% of the stage and its thickness by about 9%, moving both ends safely inward. Enlarged the invisible endpoint hit areas so the smaller object is easier to grab on desktop and mobile.
+- Extended Blobby's non-fullscreen 3D render rectangle 72px upward behind the opaque header and resized the renderer to that overscan area. Raised geometry and shadows now clip behind the header instead of forming visible straight cut lines at the top corners.
+- Standardized the child-facing term as `Toppings` instead of `Mix-ins`. Changing the slime color now recolors every existing topping from the new palette while preserving topping counts, positions, types, and material anchors.
+- Swapped Glowy and Squishy sound assignments: Glowy now uses the softer slosh loop, while Squishy has the crunchy bingsu loop and press accent. Replaced Squishy's flat Canvas renderer with a Three.js instanced 3D bed of three raised material levels and 170–260 embedded bingsu beads; local cells and their beads press visibly downward, widen, darken, and recover slowly.
 
 ## Complete
 
