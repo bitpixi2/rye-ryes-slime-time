@@ -29,6 +29,17 @@ flowchart LR
 
 ![Stretchy slime with animal faces and stars](docs/stretchy-slime-desktop.png)
 
-Built with Vite, Three.js, WebGL Fluid Enhanced, Canvas 2D, and the Web Audio and Vibration APIs.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/slime-gallery-glowy.png" alt="Glowy slime swirled across a blue table" /></td>
+    <td width="50%"><img src="docs/slime-gallery-blobby.png" alt="Blobby green slime with colorful toppings" /></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/slime-gallery-squishy.png" alt="Squishy aqua slime with sprinkles and beads" /></td>
+    <td width="50%"><img src="docs/slime-gallery-stretchy.png" alt="Stretchy mango slime with colorful toppings" /></td>
+  </tr>
+</table>
+
+Built with Vite, Three.js, WebGL Fluid Enhanced, Canvas 2D, the Web Audio and Vibration APIs, and sounds from ElevenLabs.
 
 [MIT licensed](LICENSE).
