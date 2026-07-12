@@ -68,6 +68,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Removed Glowy's decorative dot and diagonal-line overlays. Renamed Squishy to `Puffy` in the app and README, and expanded its Three.js puff bed from three height levels to five taller levels while keeping local press-down compression and slow reinflation.
 - Kept Stretchy's endpoint centers within a safe 14%–86% horizontal and 8%–92% vertical region so its rounded ends retain a visible edge margin. Strand-side ownership is deterministic: grabbing the left half controls the left end and grabbing the right half controls the right end.
 - Replaced Puffy's prior crunchy bingsu loop/accent with the supplied `Soft foam ball squish` MP3 as its single interaction-gated looping sound.
+- Replaced Glowy's slosh with the supplied Ginsu Crunchy Slime #1 and #4 MP3s, alternating the loop on each new press interaction. Trimmed the supplied Soft Discovery Tone MP3 to exactly its first second and play it only when a slime type is selected.
 
 ## Complete
 

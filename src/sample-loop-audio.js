@@ -2,8 +2,9 @@ const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(mi
 
 export const SAMPLE_LOOP_PROFILES = Object.freeze({
   liquidy: Object.freeze({
-    file: '/audio/putty-slosh-loop.mp3',
-    volumeCap: 0.095,
+    file: '/audio/glowy-ginsu-1.mp3',
+    files: Object.freeze(['/audio/glowy-ginsu-1.mp3', '/audio/glowy-ginsu-4.mp3']),
+    volumeCap: 0.18,
   }),
   cloud3d: Object.freeze({
     file: '/audio/cloud-slime.mp3',
@@ -20,8 +21,8 @@ export const SAMPLE_LOOP_PROFILES = Object.freeze({
 });
 
 export const DISCOVERY_SAMPLE = Object.freeze({
-  file: '/audio/ui-discovery.mp3',
-  volumeCap: 0.035,
+  file: '/audio/type-discovery-1s.mp3',
+  volumeCap: 0.045,
 });
 
 const round = (value) => Number(value.toFixed(3));
@@ -47,8 +48,11 @@ export class SampleLoopAudio {
     this.fadeOutMs = Math.max(40, fadeOutMs);
     this.mode = SAMPLE_LOOP_PROFILES[mode] ? mode : 'liquidy';
     this.profile = SAMPLE_LOOP_PROFILES[this.mode];
+    this.alternateIndex = -1;
+    this.activeFile = this.profile.file;
     this.muted = Boolean(muted);
     this.base = null;
+    this.baseTracks = [];
     this.accent = null;
     this.discoveryTrack = null;
     this.started = false;
@@ -78,7 +82,9 @@ export class SampleLoopAudio {
   }
 
   prepareModeTracks() {
-    this.base = this.createTrack(this.profile.file, { loop: true });
+    const files = this.profile.files || [this.profile.file];
+    this.baseTracks = files.map((file) => this.createTrack(file, { loop: true }));
+    this.base = this.baseTracks[0] || null;
     this.accent = this.profile.pressFile
       ? this.createTrack(this.profile.pressFile)
       : null;
@@ -119,11 +125,14 @@ export class SampleLoopAudio {
   selectMode(mode) {
     if (!SAMPLE_LOOP_PROFILES[mode] || this.disposed) return false;
     if (mode === this.mode) return true;
-    this.releaseTrack(this.base);
+    this.baseTracks.forEach((track) => this.releaseTrack(track));
     this.releaseTrack(this.accent);
     this.mode = mode;
     this.profile = SAMPLE_LOOP_PROFILES[mode];
+    this.alternateIndex = -1;
+    this.activeFile = this.profile.file;
     this.base = null;
+    this.baseTracks = [];
     this.accent = null;
     this.started = false;
     this.unlocked = false;
@@ -144,6 +153,16 @@ export class SampleLoopAudio {
   start(mode = this.mode) {
     if (this.disposed || !SAMPLE_LOOP_PROFILES[mode]) return false;
     if (mode !== this.mode) this.selectMode(mode);
+    if (!this.started && this.profile.files?.length > 1) {
+      this.alternateIndex = (this.alternateIndex + 1) % this.profile.files.length;
+      this.activeFile = this.profile.files[this.alternateIndex];
+      this.base = this.baseTracks[this.alternateIndex] || null;
+      try {
+        if (this.base) this.base.currentTime = 0;
+      } catch {
+        // Starting from the current position is an acceptable metadata fallback.
+      }
+    }
     if (!this.base) return false;
     if (this.started && !this.base.paused) return true;
     this.base.loop = true;
@@ -275,7 +294,7 @@ export class SampleLoopAudio {
     this.targetVolume = 0;
     this.pressBoost = 0;
     this.pressBoostRemaining = 0;
-    for (const track of [this.base, this.accent, this.discoveryTrack]) {
+    for (const track of [...new Set([...this.baseTracks, this.accent, this.discoveryTrack])]) {
       if (!track) continue;
       track.volume = 0;
       track.pause?.();
@@ -292,7 +311,9 @@ export class SampleLoopAudio {
   get metrics() {
     return {
       mode: this.mode,
-      selectedFile: this.profile.file,
+      selectedFile: this.activeFile,
+      alternatingFiles: this.profile.files || null,
+      alternateIndex: this.profile.files?.length > 1 ? this.alternateIndex : null,
       pressAccentFile: this.profile.pressFile || null,
       supported: Boolean(this.base),
       started: this.started,
@@ -314,10 +335,11 @@ export class SampleLoopAudio {
   dispose() {
     if (this.disposed) return;
     this.stop();
-    this.releaseTrack(this.base);
+    this.baseTracks.forEach((track) => this.releaseTrack(track));
     this.releaseTrack(this.accent);
     this.releaseTrack(this.discoveryTrack);
     this.base = null;
+    this.baseTracks = [];
     this.accent = null;
     this.discoveryTrack = null;
     this.disposed = true;

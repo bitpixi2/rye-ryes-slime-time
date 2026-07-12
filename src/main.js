@@ -2517,6 +2517,7 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     });
     initFluid({ replace: true, seedDelay: 100 });
     sampleLoops.selectMode(state.slimeType);
+    sampleLoops.playDiscovery(0.8);
     const previewPitch = state.slimeType === 'cloud3d' ? 0.72
       : state.slimeType === 'putty' ? 0.88
         : state.slimeType === 'bingsu' ? 1.05
