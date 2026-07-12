@@ -59,6 +59,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Renamed `Glitter` to `Stars` and unified the type, color, and topping selectors as matching 86px rounded image cards with bottom text overlays. Topping previews are rendered from the exact in-game sprinkle, animal, bead, and star drawing functions rather than substitute imagery.
 - Made animal faces fully opaque with wider smiles. Added per-engine resistance profiles so Glowy responds slightly faster and Stretchy responds faster again while preserving their thick, lagged feel.
 - Made uploaded slime loops strictly interaction-gated: no sample starts during navigation, type choice, play entry, or unmute. Mobile QA confirmed zero playback before contact, active playback while pressed, and immediate silence on release, with no browser errors.
+- Rotated the requested uploaded sound assignments in order: Glowy now uses the former Squishy crunchy loop/accent, Squishy uses the former Stretchy slosh, and Stretchy uses the former Glowy gel loop; Blobby is unchanged.
 
 ## Complete
 

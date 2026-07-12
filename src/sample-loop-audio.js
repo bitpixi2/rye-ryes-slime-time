@@ -2,22 +2,22 @@ const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(mi
 
 export const SAMPLE_LOOP_PROFILES = Object.freeze({
   liquidy: Object.freeze({
-    file: '/audio/liquidy-gel-slime.mp3',
-    volumeCap: 0.14,
+    file: '/audio/bingsu-crunch-loop.mp3',
+    volumeCap: 0.24,
+    pressFile: '/audio/bingsu-press-crunch.mp3',
+    pressVolumeCap: 0.14,
   }),
   cloud3d: Object.freeze({
     file: '/audio/cloud-slime.mp3',
     volumeCap: 0.145,
   }),
   bingsu: Object.freeze({
-    file: '/audio/bingsu-crunch-loop.mp3',
-    volumeCap: 0.24,
-    pressFile: '/audio/bingsu-press-crunch.mp3',
-    pressVolumeCap: 0.14,
-  }),
-  putty: Object.freeze({
     file: '/audio/putty-slosh-loop.mp3',
     volumeCap: 0.095,
+  }),
+  putty: Object.freeze({
+    file: '/audio/liquidy-gel-slime.mp3',
+    volumeCap: 0.14,
   }),
 });
 
