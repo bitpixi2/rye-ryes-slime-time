@@ -61,6 +61,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Made uploaded slime loops strictly interaction-gated: no sample starts during navigation, type choice, play entry, or unmute. Mobile QA confirmed zero playback before contact, active playback while pressed, and immediate silence on release, with no browser errors.
 - Rotated the requested uploaded sound assignments in order: Glowy now uses the former Squishy crunchy loop/accent, Squishy uses the former Stretchy slosh, and Stretchy uses the former Glowy gel loop; Blobby is unchanged.
 - Removed Stretchy's poke, press-dimple, and hover-dent modes. Pressing anywhere on the visible strand now grabs its nearest available end, so desktop press-and-drag consistently stretches the material.
+- Reduced Stretchy's resting span from 76% to 68% of the stage and its thickness by about 9%, moving both ends safely inward. Enlarged the invisible endpoint hit areas so the smaller object is easier to grab on desktop and mobile.
 
 ## Complete
 

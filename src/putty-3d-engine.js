@@ -34,11 +34,11 @@ export class StretchyPutty3DEngine {
     this.geometryInterval = this.isMobile ? 1000 / 30 : 1000 / 45;
     this.themeSignature = '';
     this.baseRadius = 0.42;
-    this.restLengthNormalized = 0.76;
+    this.restLengthNormalized = 0.68;
 
     this.ends = [
-      new THREE.Vector2(0.12, 0.52),
-      new THREE.Vector2(0.88, 0.52),
+      new THREE.Vector2(0.16, 0.52),
+      new THREE.Vector2(0.84, 0.52),
     ];
     this.endTargets = this.ends.map((point) => point.clone());
     this.grabs = new Map();
@@ -201,7 +201,7 @@ export class StretchyPutty3DEngine {
     const right = this.normalizedToWorld(1, 0.5, new THREE.Vector3());
     const top = this.normalizedToWorld(0.5, 0, new THREE.Vector3());
     const bottom = this.normalizedToWorld(0.5, 1, new THREE.Vector3());
-    this.baseRadius = Math.min(left.distanceTo(right), top.distanceTo(bottom)) * 0.165;
+    this.baseRadius = Math.min(left.distanceTo(right), top.distanceTo(bottom)) * 0.15;
     this.geometryDirty = true;
     this.geometryAccumulator = 1000;
     this.rebuildGeometry();
@@ -231,7 +231,7 @@ export class StretchyPutty3DEngine {
       const nearestAvailableDistance = nearestAvailableEnd >= 0
         ? distanceToEnd(nearestAvailableEnd)
         : Infinity;
-      const endHitRadius = Math.max(this.isMobile ? 50 : 42, Math.min(this.width, this.height) * 0.15);
+      const endHitRadius = Math.max(this.isMobile ? 60 : 54, Math.min(this.width, this.height) * 0.17);
 
       if (nearestAvailableDistance <= endHitRadius) {
         mode = { type: 'grab', endIndex: nearestAvailableEnd };
