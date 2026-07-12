@@ -9,10 +9,6 @@ export const SAMPLE_LOOP_PROFILES = Object.freeze({
     file: '/audio/cloud-slime.mp3',
     volumeCap: 0.145,
   }),
-  wax: Object.freeze({
-    file: '/audio/wax-crackle-slime.mp3',
-    volumeCap: 0.07,
-  }),
   bingsu: Object.freeze({
     file: '/audio/bingsu-crunch-loop.mp3',
     volumeCap: 0.24,

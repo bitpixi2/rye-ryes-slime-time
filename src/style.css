@@ -123,8 +123,6 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 }
 .fluid-stage.cloud-volume .surface-grain,
 .fluid-stage.cloud-volume .slime-glaze,
-.fluid-stage.wax-mode .surface-grain,
-.fluid-stage.wax-mode .slime-glaze,
 .fluid-stage.bingsu-mode .surface-grain,
 .fluid-stage.bingsu-mode .slime-glaze,
 .fluid-stage.putty-mode .surface-grain,
@@ -200,18 +198,11 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 
 .type-choice-row { display: flex; justify-content: flex-start; gap: 7px; overflow-x: auto; padding: 0 12px 5px; scroll-padding-inline: 12px; scroll-snap-type: x proximity; scrollbar-width: none; }
 .type-choice-row::-webkit-scrollbar { display: none; }
-.type-choice { position: relative; flex: 0 0 100px; min-height: 79px; scroll-snap-align: start; border: 1px solid #dfd2e7; border-radius: 17px; padding: 6px 5px 5px; background: rgba(255,255,255,.76); display: grid; grid-template-columns: 36px 1fr; grid-template-rows: 1fr auto; align-items: center; gap: 0 5px; cursor: pointer; transition: transform .12s ease, background .18s ease, border-color .18s ease; }
+.type-choice { position: relative; flex: 0 0 clamp(82px, calc((100vw - 45px) / 4), 116px); height: 86px; overflow: hidden; scroll-snap-align: start; border: 2px solid rgba(255,255,255,.92); border-radius: 17px; padding: 0; background: #302239; box-shadow: 0 5px 14px rgba(47,24,61,.18); cursor: pointer; transition: transform .12s ease, border-color .18s ease, box-shadow .18s ease; }
 .type-choice:active { transform: scale(.92); }
-.type-choice.selected { color: #fff; background: #302239; border-color: #302239; }
-.type-choice i { grid-row: 1 / 3; width: 38px; height: 54px; display: grid; place-items: center; border-radius: 14px; color: #fff; font-style: normal; font-size: 25px; box-shadow: inset 5px 6px 10px rgba(255,255,255,.25), inset -4px -5px 8px rgba(30,0,50,.18); }
-.type-choice span { align-self: end; font-size: 9px; line-height: 1.05; text-align: left; }
-.type-choice small { align-self: start; margin-top: 3px; color: #8b7c92; font: 7px system-ui, sans-serif; text-align: left; }
-.type-choice.selected small { color: #d9cde0; }
-.type-liquid { background: linear-gradient(145deg,#ff4fa1,#6734e8); }
-.type-cloud { background: linear-gradient(145deg,#f8dfff,#9a62ff); }
-.type-wax { background: linear-gradient(145deg,#fff9db,#e08bc7); }
-.type-bingsu { background: linear-gradient(145deg,#c9fff8,#9b8cff 55%,#ff9ad7); }
-.type-putty { background: linear-gradient(145deg,#64efe2,#236eea); }
+.type-choice.selected { border-color: #ffffff; box-shadow: 0 0 0 4px #7b38f3, 0 8px 20px rgba(63,23,91,.3); }
+.type-choice img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.type-choice span { position: absolute; z-index: 2; inset: auto 0 0; padding: 18px 7px 8px; color: #fff; background: linear-gradient(transparent, rgba(26,10,36,.86)); font-size: 14px; line-height: 1; letter-spacing: .2px; text-align: center; text-shadow: 0 1px 4px rgba(0,0,0,.75); }
 
 .slime-choice, .mix-choice {
   position: relative;
@@ -237,11 +228,10 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .slime-choice .lime { background: linear-gradient(145deg, #dfff58, #4ddc85); }
 .slime-choice .mango { background: linear-gradient(145deg, #ffd846, #ff6759); }
 .slime-choice .aqua { background: linear-gradient(145deg, #62f4e5, #229bf1); }
-.slime-choice .galaxy { background: linear-gradient(145deg, #8e57ff 0%, #5930b8 52%, #21113f 100%); }
 
 .mix-choice i { border-radius: 14px; font-style: normal; font-size: 24px; }
 .sprinkle-preview { background: url('/candy-sprinkles.jpg') center / cover; }
-.star-preview { color: #fff17b; background: linear-gradient(145deg,#ff96c9,#7d3bf1); text-shadow: 2px 3px 0 #f09; }
+.animal-preview { color: #fff; background: linear-gradient(145deg,#ffb86f,#8f64ef); font-size: 14px !important; line-height: .9; letter-spacing: -2px; }
 .bead-preview { background: radial-gradient(circle at 32% 30%, #fff 0 6%, #7ef3e3 8% 22%, transparent 24%), radial-gradient(circle at 68% 67%, #fff 0 5%, #ff75ae 7% 21%, transparent 23%), radial-gradient(circle at 68% 24%, #fff 0 5%, #a778ff 7% 18%, transparent 20%), #d8fff9; }
 .glitter-preview { color: #fff; background: radial-gradient(circle at 35% 35%, #fff 0 3%, transparent 4%), linear-gradient(145deg,#392060,#181025); text-shadow: 0 0 7px #fff, 9px 7px 0 -2px #ff7aca; }
 

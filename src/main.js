@@ -1,7 +1,6 @@
 import WebGLFluidEnhanced from 'webgl-fluid-enhanced';
 import * as THREE from 'three';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
-import { OglCrackleEngine } from './crackle-ogl-engine.js';
 import { StretchyPutty3DEngine } from './putty-3d-engine.js';
 import { SampleLoopAudio } from './sample-loop-audio.js';
 import './style.css';
@@ -33,15 +32,14 @@ const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad
 const desktopHoverEnabled = false;
 const DESKTOP_HOVER_POINTER_ID = 'desktop-hover';
 const TAU = Math.PI * 2;
-const SLIME_TYPES = ['liquidy', 'cloud3d', 'wax', 'bingsu', 'putty'];
-const MIX_TYPES = ['sprinkles', 'stars', 'beads', 'glitter'];
-const MIX_LABELS = { sprinkles: 'Candy Sprinkles', stars: 'Jelly Stars', beads: 'Bubble Beads', glitter: 'Cosmic Glitter' };
+const SLIME_TYPES = ['liquidy', 'cloud3d', 'bingsu', 'putty'];
+const MIX_TYPES = ['sprinkles', 'animals', 'beads', 'glitter'];
+const MIX_LABELS = { sprinkles: 'Sprinkles', animals: 'Animals', beads: 'Beads', glitter: 'Glitter' };
 const LIQUID_CONTRAST_PALETTES = {
   berry: ['#35f4dd', '#fff06a', '#ff4aab', '#72a5ff'],
   lime: ['#8f3dff', '#ff4da6', '#294cff', '#fff15c'],
   mango: ['#21e0dc', '#8045ff', '#18b7ff', '#ff3f93'],
   aqua: ['#ff6f3d', '#ff4bb7', '#dfff43', '#8d43ff'],
-  galaxy: ['#fff04e', '#3ff4e0', '#ff4fa8', '#77a9ff'],
 };
 const MAX_MIX_BATCHES = 5;
 const SLIME_TOUCH_LAG_MS = 315;
@@ -51,39 +49,32 @@ const randomBetween = (min, max) => min + Math.random() * (max - min);
 
 const themes = {
   berry: {
-    name: 'Berry Bounce',
+    name: 'Berry',
     palette: ['#ff3f91', '#ff79c5', '#a74df4', '#6d24d6', '#ffd0e8'],
     dyePalette: ['#ff297f', '#b03df2', '#5a16c8', '#28d8ca'],
     base: '#58148f',
     accent: '#ff4d9d',
   },
   lime: {
-    name: 'Lime Fizz',
+    name: 'Lime',
     palette: ['#dfff4f', '#7df38d', '#2ed49c', '#f6ffad', '#44b968'],
     dyePalette: ['#dfff4f', '#7df38d', '#2ed49c', '#44b968'],
     base: '#44b96d',
     accent: '#d8ff4d',
   },
   mango: {
-    name: 'Mango Pop',
+    name: 'Mango',
     palette: ['#ffd83f', '#ff9845', '#ff5d70', '#ffbd55', '#fff09a'],
     dyePalette: ['#ffd83f', '#ff9845', '#ff5d70', '#ffbd55'],
     base: '#f06a55',
     accent: '#ffd63f',
   },
   aqua: {
-    name: 'Aqua Wobble',
+    name: 'Aqua',
     palette: ['#5ff9e6', '#23d0dc', '#2b91f0', '#b8fff4', '#5b63e7'],
     dyePalette: ['#5ff9e6', '#23d0dc', '#2b91f0', '#5b63e7'],
     base: '#2596c7',
     accent: '#56f6df',
-  },
-  galaxy: {
-    name: 'Galaxy Grape',
-    palette: ['#b96cff', '#713edc', '#ff78cf', '#36205f', '#80dfff'],
-    dyePalette: ['#b96cff', '#713edc', '#ff78cf', '#36205f', '#80dfff'],
-    base: '#382067',
-    accent: '#c873ff',
   },
 };
 
@@ -151,6 +142,7 @@ class SlimeAudio {
     this.airPopCount = 0;
     this.shinySparkleCount = 0;
     this.lastCrunchSound = { wax: 0, bingsu: 0 };
+    this.interactionEffectsEnabled = false;
   }
 
   init() {
@@ -201,6 +193,7 @@ class SlimeAudio {
   }
 
   squelch(intensity = 0.5, pitch = 1) {
+    if (!this.interactionEffectsEnabled) return false;
     this.init();
     if (!this.context || state.muted) return;
     const now = this.context.currentTime;
@@ -253,6 +246,9 @@ class SlimeAudio {
       putty: [104, 168],
     }[state.slimeType] || [82, 148];
     this.nextDragDelay = randomBetween(...dragDelay);
+    // Retain this cadence return value for haptics, but do not layer the old
+    // synthesized drag sound over the uploaded sample loop.
+    if (!this.interactionEffectsEnabled) return true;
     this.init();
     if (!this.context || state.muted) return false;
     this.textureBurstCount += 1;
@@ -321,6 +317,7 @@ class SlimeAudio {
   }
 
   crunchTexture(kind = 'bingsu', intensity = 0.7, { first = false, force = false } = {}) {
+    if (!this.interactionEffectsEnabled) return false;
     const nowMs = performance.now();
     const minimumDelay = kind === 'wax' ? 58 : 72;
     if (!force && nowMs - this.lastCrunchSound[kind] < minimumDelay) return false;
@@ -395,6 +392,7 @@ class SlimeAudio {
   }
 
   release(speed = 8) {
+    if (!this.interactionEffectsEnabled) return false;
     this.init();
     if (!this.context || state.muted) return;
     const now = this.context.currentTime;
@@ -472,6 +470,7 @@ class ToppingLayer {
     this.context = context;
     this.particles = [];
     this.palette = themes[state.theme].palette;
+    this.anchoredRedistributions = 0;
     this.spawnBaseTexture();
   }
 
@@ -492,7 +491,7 @@ class ToppingLayer {
   }
 
   makeParticle(type) {
-    return {
+    const particle = {
       type,
       x: Math.random(),
       y: Math.random(),
@@ -504,11 +503,13 @@ class ToppingLayer {
       color: this.palette[Math.floor(Math.random() * this.palette.length)],
       phase: Math.random() * TAU,
     };
+    if (type === 'animals') particle.animalKind = ['bear', 'bunny', 'cat', 'dog'][Math.floor(Math.random() * 4)];
+    return particle;
   }
 
   countFor(type) {
-    const mobileCounts = { sprinkles: 30, stars: 8, beads: 16, glitter: 32 };
-    const desktopCounts = { sprinkles: 46, stars: 12, beads: 24, glitter: 48 };
+    const mobileCounts = { sprinkles: 30, animals: 8, beads: 16, glitter: 32 };
+    const desktopCounts = { sprinkles: 46, animals: 12, beads: 24, glitter: 48 };
     return (isMobile ? mobileCounts : desktopCounts)[type] || 20;
   }
 
@@ -540,12 +541,54 @@ class ToppingLayer {
     const ndy = dy / state.toppingHeight;
     const radius = 0.15;
     for (const particle of this.particles) {
-      if (particle.anchorKind) continue;
       const offsetX = particle.x - nx;
       const offsetY = particle.y - ny;
       const distance = Math.hypot(offsetX, offsetY);
       if (distance > radius) continue;
       const influence = (1 - distance / radius) ** 2 * force;
+      if (particle.anchorKind === 'cloud' && cloudSlime?.blobs?.length) {
+        const targetX = clamp(particle.x + ndx * influence * 3.1, 0.02, 0.98);
+        const targetY = clamp(particle.y + ndy * influence * 3.1, 0.02, 0.98);
+        const nearest = cloudSlime.blobs
+          .map((blob, index) => ({
+            index,
+            x: blob.x,
+            y: 1 - blob.y,
+            distance: Math.hypot(targetX - blob.x, targetY - (1 - blob.y)),
+          }))
+          .sort((first, second) => first.distance - second.distance)[0];
+        particle.anchorIndex = nearest.index;
+        particle.anchorOffsetX = clamp(targetX - nearest.x, -0.085, 0.085);
+        particle.anchorOffsetY = clamp(targetY - nearest.y, -0.085, 0.085);
+        particle.spin += (ndx - ndy) * influence * 0.012;
+        this.anchoredRedistributions += 1;
+        continue;
+      }
+      if (particle.anchorKind === 'putty' && puttySlime?.surfacePoint) {
+        const current = puttySlime.surfacePoint(particle.anchorT, 0);
+        const nearby = puttySlime.surfacePoint(clamp(particle.anchorT + 0.018, 0, 1), 0);
+        if (current && nearby) {
+          const tangentX = nearby.x - current.x;
+          const tangentY = nearby.y - current.y;
+          const tangentLength = Math.max(0.0001, Math.hypot(tangentX, tangentY));
+          const unitX = tangentX / tangentLength;
+          const unitY = tangentY / tangentLength;
+          particle.anchorT = clamp(
+            particle.anchorT + (ndx * unitX + ndy * unitY) * influence * 3.8,
+            0.025,
+            0.975,
+          );
+          particle.anchorSide = clamp(
+            particle.anchorSide + (-ndx * unitY + ndy * unitX) * influence * 1.8,
+            -0.075,
+            0.075,
+          );
+          particle.spin += (ndx - ndy) * influence * 0.012;
+          this.anchoredRedistributions += 1;
+        }
+        continue;
+      }
+      if (particle.anchorKind) continue;
       particle.vx += ndx * influence * 0.72 - offsetY * influence * 0.003;
       particle.vy += ndy * influence * 0.72 + offsetX * influence * 0.003;
       particle.spin += (ndx - ndy) * influence * 0.008;
@@ -553,6 +596,33 @@ class ToppingLayer {
   }
 
   burst(type, particles = this.particles.filter((item) => item.type === type)) {
+    if (state.slimeType === 'cloud3d' && cloudSlime?.blobs?.length) {
+      const start = Math.floor(Math.random() * cloudSlime.blobs.length);
+      particles.forEach((particle, index) => {
+        const blob = cloudSlime.blobs[(start + index * 11) % cloudSlime.blobs.length];
+        const angle = index * 2.39996 + Math.random() * 0.3;
+        const radius = randomBetween(0.018, 0.075);
+        particle.x = clamp(blob.x + Math.cos(angle) * radius, 0.02, 0.98);
+        particle.y = clamp(1 - blob.y + Math.sin(angle) * radius, 0.02, 0.98);
+      });
+      this.attachToMaterial(particles);
+      return;
+    }
+    if (state.slimeType === 'putty' && puttySlime?.surfacePoint) {
+      particles.forEach((particle, index) => {
+        const evenlySpaced = (index + 0.5) / particles.length;
+        const amount = clamp(0.035 + evenlySpaced * 0.93 + randomBetween(-0.012, 0.012), 0.035, 0.965);
+        const side = randomBetween(-0.064, 0.064);
+        const surface = puttySlime.surfacePoint(amount, side);
+        if (surface) {
+          particle.x = surface.x;
+          particle.y = surface.y;
+          particle.preferredAnchorT = amount;
+        }
+      });
+      this.attachToMaterial(particles);
+      return;
+    }
     const centerX = randomBetween(0.25, 0.75);
     const centerY = randomBetween(0.2, 0.8);
     for (const particle of particles) {
@@ -602,7 +672,13 @@ class ToppingLayer {
       const lineY = finish.y - start.y;
       const lineLengthSquared = Math.max(0.0001, lineX * lineX + lineY * lineY);
       attachable.forEach((particle) => {
-        const amount = clamp(((particle.x - start.x) * lineX + (particle.y - start.y) * lineY) / lineLengthSquared, 0.035, 0.965);
+        const projectedAmount = ((particle.x - start.x) * lineX + (particle.y - start.y) * lineY) / lineLengthSquared;
+        const amount = clamp(
+          Number.isFinite(particle.preferredAnchorT) ? particle.preferredAnchorT : projectedAmount,
+          0.035,
+          0.965,
+        );
+        delete particle.preferredAnchorT;
         const center = puttySlime.surfacePoint?.(amount, 0);
         const nearby = puttySlime.surfacePoint?.(clamp(amount + 0.018, 0, 1), 0);
         if (!center || !nearby) {
@@ -634,6 +710,23 @@ class ToppingLayer {
 
   reanchorAll() {
     this.attachToMaterial(this.particles);
+  }
+
+  get distributionMetrics() {
+    const decorated = this.particles.filter((particle) => particle.type !== 'bubble');
+    const cloudAnchors = new Set(
+      decorated.filter((particle) => particle.anchorKind === 'cloud').map((particle) => particle.anchorIndex),
+    );
+    const puttyAmounts = decorated
+      .filter((particle) => particle.anchorKind === 'putty')
+      .map((particle) => particle.anchorT);
+    return {
+      cloudAnchorsUsed: cloudAnchors.size,
+      puttySpan: puttyAmounts.length
+        ? Number((Math.max(...puttyAmounts) - Math.min(...puttyAmounts)).toFixed(3))
+        : 0,
+      redistributions: this.anchoredRedistributions,
+    };
   }
 
   updateAnchor(particle, frame) {
@@ -698,6 +791,59 @@ class ToppingLayer {
     context.closePath();
   }
 
+  drawAnimalFace(context, radius, kind, color) {
+    context.save();
+    context.fillStyle = color;
+    context.strokeStyle = 'rgba(48,21,55,.42)';
+    context.lineWidth = Math.max(1, radius * 0.1);
+    if (kind === 'bunny') {
+      for (const side of [-1, 1]) {
+        context.beginPath();
+        context.ellipse(side * radius * 0.42, -radius * 0.88, radius * 0.28, radius * 0.58, side * 0.12, 0, TAU);
+        context.fill();
+        context.stroke();
+      }
+    } else if (kind === 'cat') {
+      for (const side of [-1, 1]) {
+        context.beginPath();
+        context.moveTo(side * radius * 0.72, -radius * 0.38);
+        context.lineTo(side * radius * 0.56, -radius * 1.02);
+        context.lineTo(side * radius * 0.1, -radius * 0.62);
+        context.closePath();
+        context.fill();
+        context.stroke();
+      }
+    } else {
+      for (const side of [-1, 1]) {
+        context.beginPath();
+        const earY = kind === 'dog' ? -radius * 0.35 : -radius * 0.65;
+        context.ellipse(side * radius * 0.67, earY, radius * (kind === 'dog' ? 0.34 : 0.3), radius * (kind === 'dog' ? 0.5 : 0.3), side * 0.18, 0, TAU);
+        context.fill();
+        context.stroke();
+      }
+    }
+    context.beginPath();
+    context.arc(0, 0, radius, 0, TAU);
+    context.fill();
+    context.stroke();
+    context.fillStyle = '#302239';
+    for (const side of [-1, 1]) {
+      context.beginPath();
+      context.arc(side * radius * 0.34, -radius * 0.15, radius * 0.09, 0, TAU);
+      context.fill();
+    }
+    context.beginPath();
+    context.arc(0, radius * 0.18, radius * 0.13, 0, TAU);
+    context.fill();
+    context.strokeStyle = '#302239';
+    context.lineWidth = Math.max(1, radius * 0.08);
+    context.beginPath();
+    context.arc(-radius * 0.14, radius * 0.25, radius * 0.16, 0.1, 1.25);
+    context.arc(radius * 0.14, radius * 0.25, radius * 0.16, 1.9, 3.05);
+    context.stroke();
+    context.restore();
+  }
+
   render() {
     const context = this.context;
     const width = state.toppingWidth;
@@ -740,14 +886,12 @@ class ToppingLayer {
         context.globalAlpha = 0.34;
         context.fillStyle = '#fff';
         context.fillRect(-length * 0.28, -thickness * 0.26, length * 0.42, thickness * 0.2);
-      } else if (particle.type === 'stars') {
+      } else if (particle.type === 'animals') {
         const radius = (6.5 + particle.size * 5.2) * unit;
         context.shadowColor = 'rgba(60,0,80,.28)';
         context.shadowBlur = 5 * unit;
         context.shadowOffsetY = 2 * unit;
-        context.fillStyle = particle.color;
-        this.drawStar(context, radius);
-        context.fill();
+        this.drawAnimalFace(context, radius, particle.animalKind || 'bear', particle.color);
       } else if (particle.type === 'beads') {
         const radius = (4.2 + particle.size * 3.6) * unit;
         const gradient = context.createRadialGradient(-radius * 0.4, -radius * 0.42, 0, 0, 0, radius);
@@ -1411,7 +1555,6 @@ const toppings = new ToppingLayer(toppingContext);
 let fluid = null;
 let cloudSlime = null;
 let puttySlime = null;
-let waxSlime = null;
 let bingsuSlime = null;
 const seedTimers = new Set();
 
@@ -1517,8 +1660,6 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     cloudSlime = null;
     puttySlime?.dispose();
     puttySlime = null;
-    waxSlime?.dispose();
-    waxSlime = null;
     bingsuSlime?.dispose();
     bingsuSlime = null;
     if (replace) replaceSlimeCanvas();
@@ -1527,7 +1668,6 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     fluidStage.classList.remove('fluid-fallback');
     fluidStage.classList.toggle('cloud-volume', state.slimeType === 'cloud3d');
     fluidStage.classList.toggle('putty-mode', state.slimeType === 'putty');
-    fluidStage.classList.toggle('wax-mode', state.slimeType === 'wax');
     fluidStage.classList.toggle('bingsu-mode', state.slimeType === 'bingsu');
     if (state.slimeType === 'cloud3d') {
       cloudSlime = new CloudSlimeEngine(slimeCanvas);
@@ -1543,21 +1683,6 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
         isMobile,
       });
       puttySlime.resize(state.toppingWidth, state.toppingHeight);
-      toppings.reanchorAll();
-      bindSlimeInput();
-      state.webglAvailable = true;
-      return;
-    }
-    if (state.slimeType === 'wax') {
-      waxSlime = new OglCrackleEngine(slimeCanvas, {
-        getTheme: () => themes[state.theme],
-        isMobile,
-        onCrack: ({ first, intensity }) => {
-          audio.crunchTexture('wax', intensity, { first, force: first });
-          haptic(first ? [28, 11, 18, 8, 13] : [14, 6, 11], first ? 1.42 : 1.3);
-        },
-      });
-      waxSlime.resize(state.toppingWidth, state.toppingHeight);
       toppings.reanchorAll();
       bindSlimeInput();
       state.webglAvailable = true;
@@ -1709,7 +1834,7 @@ function splashMix(type) {
   const theme = themes[state.theme];
   const mixColors = {
     sprinkles: ['#ff4e98', '#36d9cf', '#ff9b36', '#8b45ed'],
-    stars: ['#fff36e', '#ff76c5', theme.accent],
+    animals: ['#fff36e', '#ff76c5', theme.accent],
     beads: ['#75f4e6', '#ff8ebd', '#b283ff'],
     glitter: ['#ffd83f', '#ff63c3', theme.accent],
   };
@@ -1807,15 +1932,11 @@ function beginDesktopPress() {
     cloudSlime?.touch(pointer.x, pointer.y, 0, 0, pointer.id, true);
   } else if (state.slimeType === 'putty') {
     puttySlime?.touch(pointer.x, pointer.y, 0, 0, pointer.id, true);
-  } else if (state.slimeType === 'wax') {
-    // Flow/compress the soft bed now; fracture effort is added only by the
-    // held-Space frames in updatePointerPhysics.
-    waxSlime?.touch(pointer.x, pointer.y, 0, 0);
   } else {
     bingsuSlime?.touch(pointer.x, pointer.y, 0, 0);
   }
   toppings.stir(pointer.x, pointer.y, 0, 0, 0.72);
-  audio.squelch(state.slimeType === 'wax' ? 0.34 : 0.72, state.slimeType === 'bingsu' ? 1.02 : 0.82);
+  audio.squelch(0.72, state.slimeType === 'bingsu' ? 1.02 : 0.82);
   return true;
 }
 
@@ -1885,21 +2006,18 @@ function pointerDown(event) {
   }
   else if (state.slimeType === 'cloud3d') cloudSlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
   else if (state.slimeType === 'putty') puttySlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
-  else if (state.slimeType === 'wax') waxSlime?.touch(position.x, position.y, 0, 0);
   else bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
   toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
   if (state.slimeType === 'bingsu') {
     audio.squelch(0.48 + state.activePointers.size * 0.1, 0.9);
     audio.crunchTexture('bingsu', 0.94, { force: true });
   } else {
-    audio.squelch(state.slimeType === 'wax' ? 0.28 : 0.44 + state.activePointers.size * 0.12, state.slimeType === 'wax' ? 0.78 : 1 - state.activePointers.size * 0.06);
+    audio.squelch(0.44 + state.activePointers.size * 0.12, 1 - state.activePointers.size * 0.06);
   }
-  if (state.slimeType !== 'wax') {
-    const pressPattern = state.slimeType === 'bingsu'
-      ? [13, 6, 10, 6, 8]
-      : state.activePointers.size > 1 ? [18, 14, 16] : [16, 11, 13];
-    haptic(pressPattern, 1.3);
-  }
+  const pressPattern = state.slimeType === 'bingsu'
+    ? [13, 6, 10, 6, 8]
+    : state.activePointers.size > 1 ? [18, 14, 16] : [16, 11, 13];
+  haptic(pressPattern, 1.3);
   hideHint();
 }
 
@@ -1960,8 +2078,7 @@ function handleCanvasKey(event) {
     } else if (state.slimeType === 'putty') {
       puttySlime?.touch(centerX, centerY, dx, dy, 'keyboard', true);
       puttySlime?.release('keyboard');
-    } else if (state.slimeType === 'wax') waxSlime?.touch(centerX, centerY, dx, dy);
-    else bingsuSlime?.touch(centerX, centerY, dx, dy);
+    } else bingsuSlime?.touch(centerX, centerY, dx, dy);
     toppings.stir(centerX, centerY, dx, dy, 0.7);
     audio.wetDrag(24, 1);
   }
@@ -1981,7 +2098,6 @@ function resizeToppings() {
   toppings.resize();
   cloudSlime?.resize(state.toppingWidth, state.toppingHeight);
   puttySlime?.resize(state.toppingWidth, state.toppingHeight);
-  waxSlime?.resize(state.toppingWidth, state.toppingHeight);
   bingsuSlime?.resize(state.toppingWidth, state.toppingHeight);
   toppings.render();
 }
@@ -1993,9 +2109,7 @@ function applyDesktopPressFrame(pointer, dt, lag) {
   const pressX = pointer.x;
   const pressY = pointer.y;
 
-  if (state.slimeType === 'wax') {
-    waxSlime?.press(pressX, pressY, dt, pointer.speed);
-  } else if (lag < 0.08) {
+  if (lag < 0.08) {
     if (state.slimeType === 'liquidy') {
       if (pointer.pressFrameCount % 7 === 1) {
         const angle = pointer.pressFrameCount * 0.47;
@@ -2039,9 +2153,6 @@ function updatePointerPhysics(dt) {
     const offsetY = pointer.y - pointer.slimeY;
     const lag = Math.hypot(offsetX, offsetY);
     if (isActive) totalLag += lag;
-    if (isActive && !pointer.desktopHover && state.slimeType === 'wax') {
-      waxSlime?.press(pointer.slimeX, pointer.slimeY, dt, pointer.speed);
-    }
     if (isActive) applyDesktopPressFrame(pointer, dt, lag);
     if (lag < 0.08) return;
 
@@ -2075,7 +2186,6 @@ function updatePointerPhysics(dt) {
       if (pointer.desktopHover && !pointer.pressing) puttySlime?.hover?.(pointer.slimeX, pointer.slimeY, moveX, moveY);
       else puttySlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.id);
     }
-    else if (state.slimeType === 'wax') waxSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
     else bingsuSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
     toppings.stir(pointer.slimeX, pointer.slimeY, moveX, moveY, 0.48 + Math.max(1, touchCount) * 0.07);
     state.stirCount += 1;
@@ -2122,7 +2232,6 @@ function updateGame(dt) {
   sampleLoops.update(dt, clamp(hoverFloor + touchFloor + pressBoost + motionActivity, 0, 1));
   cloudSlime?.update(dt);
   puttySlime?.update(dt);
-  waxSlime?.update(dt);
   bingsuSlime?.update(dt);
   toppings.update(dt);
 }
@@ -2331,17 +2440,15 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     sampleLoops.playDiscovery(0.65);
     const previewPitch = state.slimeType === 'cloud3d' ? 0.72
       : state.slimeType === 'putty' ? 0.88
-        : state.slimeType === 'wax' ? 0.8
-          : state.slimeType === 'bingsu' ? 1.05
-            : 1;
-    audio.squelch(state.slimeType === 'wax' ? 0.58 : 0.82, previewPitch);
+        : state.slimeType === 'bingsu' ? 1.05
+          : 1;
+    audio.squelch(0.82, previewPitch);
     haptic([18, 14, 20, 12, 24]);
     const names = {
-      liquidy: 'Liquidy Swirl',
-      cloud3d: 'Cloud Slime 3D',
-      wax: 'Crackle Shell',
-      bingsu: 'Bingsu Crunch',
-      putty: 'Stretchy Putty',
+      liquidy: 'Glowy',
+      cloud3d: 'Blobby',
+      bingsu: 'Squishy',
+      putty: 'Stretchy',
     };
     setStep('type', { feedback: false });
     showHint(`${names[state.slimeType]}! Tap the arrow for colors`, 1200);
@@ -2375,9 +2482,12 @@ document.querySelectorAll('.mix-choice').forEach((button) => {
   button.addEventListener('click', () => {
     const count = state.mixins.get(mix) || 0;
     if (count >= MAX_MIX_BATCHES) {
-      showHint(`${MIX_LABELS[mix]} is full at 5!`, 1100);
-      audio.release(6);
-      haptic([4, 18, 4]);
+      state.mixins.set(mix, 0);
+      updateMixChoice(button);
+      toppings.syncMixins();
+      showHint(`${MIX_LABELS[mix]} cleared!`, 1100);
+      haptic([7, 20, 7]);
+      saveRecipe();
       return;
     }
     const nextCount = count + 1;
@@ -2433,7 +2543,6 @@ window.render_game_to_text = () => JSON.stringify({
     engine: !state.webglAvailable ? 'animated gradient fallback' : ({
       liquidy: 'WebGL Fluid Enhanced Eulerian solver',
       cloud3d: 'Three.js Marching Cubes closed volumetric metaball surface with physical lighting',
-      wax: 'OGL WebGL persistent 3D plate fracture over a volumetric slime bed',
       bingsu: 'Canvas2D damped structural tube-bead field in translucent thick slime',
       putty: 'Three.js Catmull-Rom TubeGeometry with two independently grabbable 3D ends',
     })[state.slimeType],
@@ -2466,6 +2575,7 @@ window.render_game_to_text = () => JSON.stringify({
   toppings: {
     total: toppings.particles.length,
     anchoredToMaterial: toppings.particles.filter((particle) => particle.anchorKind === 'cloud' || particle.anchorKind === 'putty').length,
+    distribution: toppings.distributionMetrics,
     visibleMixins: MIX_TYPES.filter((type) => (state.mixins.get(type) || 0) > 0).map((type) => ({
       type,
       batches: state.mixins.get(type),
@@ -2478,15 +2588,6 @@ window.render_game_to_text = () => JSON.stringify({
     activeFolds: cloudSlime?.touchFolds.length || 0,
     stack: cloudSlime?.stackMetrics || null,
     rebuildCadence: isMobile ? 'fixed 25fps while deforming; frozen while idle' : 'fixed 30fps while deforming; frozen while idle',
-  } : state.slimeType === 'wax' ? {
-    kind: 'OGL 3D hardened wax shell plates',
-    fractureBursts: waxSlime?.fractureBursts || 0,
-    brokenPlateCount: waxSlime?.brokenPlateCount || 0,
-    accumulatedPressEffort: Number((waxSlime?.totalEffort || 0).toFixed(2)),
-    currentCrackProgress: Number((waxSlime?.pressProgress || 0).toFixed(2)),
-    shellIntegrity: waxSlime?.shellIntegrity ?? 1,
-    shellSpecularStrength: waxSlime?.shellSpecularStrength ?? 0,
-    movableUnderlayer: waxSlime?.underlayerMetrics || null,
   } : state.slimeType === 'bingsu' ? {
     kind: 'intrinsic iridescent tube beads with permanent session-long dye trails',
     beadCount: bingsuSlime?.beads.length || 0,
@@ -2503,20 +2604,18 @@ window.render_game_to_text = () => JSON.stringify({
     ...(puttySlime?.metrics || {}),
   } : null,
   sound: state.muted ? 'off' : 'on',
-  soundProfile: state.slimeType === 'wax'
-    ? 'slow dry shell rubbing, sparse earned brittle snaps, soft slime underneath'
-    : state.slimeType === 'bingsu'
+  soundProfile: state.slimeType === 'bingsu'
       ? 'dense randomized plastic crunch grains, wet thick squish, occasional trapped-air pops'
       : state.slimeType === 'putty'
         ? 'deep tacky pulls, low suction, soft rubbery foam texture'
         : state.slimeType === 'cloud3d'
           ? 'deep mushy squelch, low suction, airy irregular foam crackle'
           : 'layered wet squelch, low suction, irregular soft foam texture',
+  legacyProceduralInteractionAudio: 'disabled; uploaded sample loop only',
   sampleLoop: sampleLoops.metrics,
   cloudSlimeTextureBursts: audio.textureBurstCount,
   mushBursts: audio.mushBurstCount,
   foamCrunchBursts: audio.foamCrunchCount,
-  waxCrackleGrains: audio.waxCrackleCount,
   bingsuCrunchGrains: audio.bingsuCrunchCount,
   trappedAirPops: audio.airPopCount,
   shinySparkleNotes: audio.shinySparkleCount,
