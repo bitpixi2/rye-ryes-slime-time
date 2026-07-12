@@ -34,7 +34,7 @@ const DESKTOP_HOVER_POINTER_ID = 'desktop-hover';
 const TAU = Math.PI * 2;
 const SLIME_TYPES = ['liquidy', 'cloud3d', 'bingsu', 'putty'];
 const MIX_TYPES = ['sprinkles', 'animals', 'beads', 'glitter'];
-const MIX_LABELS = { sprinkles: 'Sprinkles', animals: 'Animals', beads: 'Beads', glitter: 'Glitter' };
+const MIX_LABELS = { sprinkles: 'Sprinkles', animals: 'Animals', beads: 'Beads', glitter: 'Stars' };
 const LIQUID_CONTRAST_PALETTES = {
   berry: ['#35f4dd', '#fff06a', '#ff4aab', '#72a5ff'],
   lime: ['#8f3dff', '#ff4da6', '#294cff', '#fff15c'],
@@ -44,6 +44,14 @@ const LIQUID_CONTRAST_PALETTES = {
 const MAX_MIX_BATCHES = 5;
 const SLIME_TOUCH_LAG_MS = 315;
 const SLIME_MAX_STEP_PER_FRAME = 4.2;
+const INTERACTION_PROFILES = {
+  liquidy: { lagMs: 285, maxStep: 4.6 },
+  putty: { lagMs: 245, maxStep: 5.25 },
+};
+const interactionProfile = (type) => INTERACTION_PROFILES[type] || {
+  lagMs: SLIME_TOUCH_LAG_MS,
+  maxStep: SLIME_MAX_STEP_PER_FRAME,
+};
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const randomBetween = (min, max) => min + Math.random() * (max - min);
 
@@ -838,8 +846,7 @@ class ToppingLayer {
     context.strokeStyle = '#302239';
     context.lineWidth = Math.max(1, radius * 0.08);
     context.beginPath();
-    context.arc(-radius * 0.14, radius * 0.25, radius * 0.16, 0.1, 1.25);
-    context.arc(radius * 0.14, radius * 0.25, radius * 0.16, 1.9, 3.05);
+    context.arc(0, radius * 0.16, radius * 0.34, 0.18, Math.PI - 0.18);
     context.stroke();
     context.restore();
   }
@@ -860,7 +867,7 @@ class ToppingLayer {
       context.save();
       context.translate(x, y);
       context.rotate(particle.angle);
-      context.globalAlpha = particle.type === 'bubble' ? 0.3 : 0.83;
+      context.globalAlpha = particle.type === 'bubble' ? 0.3 : particle.type === 'animals' ? 1 : 0.83;
 
       if (particle.type === 'bubble') {
         const radius = (3.2 + particle.size * 3.4) * unit;
@@ -1552,6 +1559,67 @@ class BingsuSlimeEngine {
 const audio = new SlimeAudio();
 const sampleLoops = new SampleLoopAudio({ mode: state.slimeType, muted: state.muted });
 const toppings = new ToppingLayer(toppingContext);
+
+function renderMixPreviews() {
+  const palette = themes[state.theme].palette;
+  document.querySelectorAll('.mix-preview').forEach((canvas) => {
+    const context = canvas.getContext('2d');
+    const { width, height } = canvas;
+    const background = context.createLinearGradient(0, 0, width, height);
+    background.addColorStop(0, themes[state.theme].base);
+    background.addColorStop(1, themes[state.theme].accent);
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = background;
+    context.fillRect(0, 0, width, height);
+
+    const positions = [
+      [28, 28], [72, 23], [119, 28], [154, 21],
+      [45, 61], [92, 58], [139, 63],
+      [25, 94], [72, 91], [119, 96], [158, 88],
+    ];
+    positions.forEach(([x, y], index) => {
+      const color = palette[index % palette.length];
+      context.save();
+      context.translate(x, y);
+      context.rotate((index % 5 - 2) * 0.34);
+      if (canvas.dataset.preview === 'sprinkles') {
+        const length = 25 + (index % 3) * 3;
+        const thickness = 7;
+        context.shadowColor = 'rgba(50,0,70,.28)';
+        context.shadowBlur = 4;
+        context.shadowOffsetY = 2;
+        context.fillStyle = color;
+        context.beginPath();
+        context.roundRect(-length / 2, -thickness / 2, length, thickness, thickness);
+        context.fill();
+        context.globalAlpha = 0.34;
+        context.fillStyle = '#fff';
+        context.fillRect(-length * 0.28, -thickness * 0.26, length * 0.42, thickness * 0.2);
+      } else if (canvas.dataset.preview === 'animals' && index < 4) {
+        toppings.drawAnimalFace(context, 15, ['bear', 'bunny', 'cat', 'dog'][index], color);
+      } else if (canvas.dataset.preview === 'beads') {
+        const radius = 10 + (index % 3);
+        const bead = context.createRadialGradient(-radius * 0.4, -radius * 0.42, 0, 0, 0, radius);
+        bead.addColorStop(0, '#fff');
+        bead.addColorStop(0.18, color);
+        bead.addColorStop(1, 'rgba(60,16,88,.72)');
+        context.fillStyle = bead;
+        context.shadowColor = 'rgba(35,0,55,.28)';
+        context.shadowBlur = 4;
+        context.beginPath();
+        context.arc(0, 0, radius, 0, TAU);
+        context.fill();
+      } else if (canvas.dataset.preview === 'glitter') {
+        context.fillStyle = index % 2 ? '#fff' : '#fff6a8';
+        toppings.drawStar(context, 9 + (index % 3) * 2);
+        context.fill();
+      }
+      context.restore();
+    });
+  });
+}
+
+renderMixPreviews();
 let fluid = null;
 let cloudSlime = null;
 let puttySlime = null;
@@ -2047,10 +2115,12 @@ function pointerUp(event) {
   const pointer = state.activePointers.get(event.pointerId);
   if (!pointer) return;
   state.activePointers.delete(event.pointerId);
+  if (state.activePointers.size === 0) sampleLoops.silenceInteraction();
   const structuralDrop = state.slimeType === 'cloud3d' || state.slimeType === 'putty';
   const lag = Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY);
+  const profile = interactionProfile(state.slimeType);
   pointer.settleRemaining = structuralDrop
-    ? clamp(lag / SLIME_MAX_STEP_PER_FRAME * 16.6667 + 180, 420, 1800)
+    ? clamp(lag / profile.maxStep * 16.6667 + 180, 420, 1800)
     : 340;
   pointer.releaseEngineGrab = structuralDrop;
   state.settlingPointers.push(pointer);
@@ -2139,8 +2209,9 @@ function updatePointerPhysics(dt) {
   }
 
   const frameScale = dt / 16.6667;
-  const followAmount = 1 - Math.exp(-dt / SLIME_TOUCH_LAG_MS);
-  const maxStep = SLIME_MAX_STEP_PER_FRAME * frameScale;
+  const profile = interactionProfile(state.slimeType);
+  const followAmount = 1 - Math.exp(-dt / profile.lagMs);
+  const maxStep = profile.maxStep * frameScale;
   let heldSpeed = 0;
   let totalLag = 0;
 
@@ -2323,7 +2394,6 @@ function hideHint() {
 function enterPlayMode() {
   if (!state.started || state.playMode) return;
   sampleLoops.selectMode(state.slimeType);
-  sampleLoops.start(state.slimeType);
   state.playMode = true;
   app.classList.add('full-slime');
   resetViewportOrigin();
@@ -2416,7 +2486,7 @@ soundButton.addEventListener('click', () => {
   soundButton.setAttribute('aria-label', state.muted ? 'Turn sound on' : 'Turn sound off');
   if (!state.muted) {
     audio.release(11);
-    if (state.typeChosen) sampleLoops.start(state.slimeType);
+    sampleLoops.silenceInteraction();
   }
   haptic(5);
   saveRecipe();
@@ -2436,8 +2506,6 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     });
     initFluid({ replace: true, seedDelay: 100 });
     sampleLoops.selectMode(state.slimeType);
-    sampleLoops.start(state.slimeType);
-    sampleLoops.playDiscovery(0.65);
     const previewPitch = state.slimeType === 'cloud3d' ? 0.72
       : state.slimeType === 'putty' ? 0.88
         : state.slimeType === 'bingsu' ? 1.05
@@ -2468,6 +2536,7 @@ document.querySelectorAll('.slime-choice').forEach((button) => {
     });
     toppings.palette = themes[state.theme].palette;
     toppings.syncMixins();
+    renderMixPreviews();
     initFluid({ replace: true, seedDelay: 120 });
     audio.squelch(0.7, 0.78 + Math.random() * 0.25);
     haptic([7, 14, 9]);
@@ -2552,7 +2621,7 @@ window.render_game_to_text = () => JSON.stringify({
     stirCount: state.stirCount,
     interactionEnergy: Number(state.interactionEnergy.toFixed(2)),
     averagePointerLag: Number(state.averagePointerLag.toFixed(1)),
-    motionProfile: 'extra thick: 315ms touch lag, broad low-force impulses, very strong velocity damping, low curl',
+    motionProfile: `extra thick: ${interactionProfile(state.slimeType).lagMs}ms touch lag, ${interactionProfile(state.slimeType).maxStep}px capped step, broad low-force impulses`,
     activeTouches: [...state.activePointers.values()].filter((pointer) => !pointer.desktopHover).length,
     activeContacts: state.activePointers.size,
     settlingDrags: state.settlingPointers.length,

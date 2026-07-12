@@ -56,6 +56,9 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Replaced the four type cards with the supplied screenshots, optimized to about 225 KB total, and overlaid only `Glowy`, `Blobby`, `Squishy`, and `Stretchy`. At 390px all four 86px cards fit in one row. Removed Galaxy Grape so the color page also has exactly four choices, renamed `Berry`, `Lime`, `Mango`, and `Aqua`.
 - Spread new Cloud decorations across 30 blob anchors and new Putty decorations across 91% of the strand. Dragging through a Cloud batch produced 259 anchored redistributions while all 46 pieces remained attached, so dense patches can be spread without decorations falling off.
 - Renamed add-ins to `Sprinkles`, `Animals`, `Beads`, and `Glitter`; Animals replaces stars with drawn bear, bunny, cat, and dog faces. Every counter now cycles through 0/5 to 5/5, and the sixth click clears only that add-in back to 0/5. Mobile QA kept an Animals batch anchored while Sprinkles reset independently, with no browser errors.
+- Renamed `Glitter` to `Stars` and unified the type, color, and topping selectors as matching 86px rounded image cards with bottom text overlays. Topping previews are rendered from the exact in-game sprinkle, animal, bead, and star drawing functions rather than substitute imagery.
+- Made animal faces fully opaque with wider smiles. Added per-engine resistance profiles so Glowy responds slightly faster and Stretchy responds faster again while preserving their thick, lagged feel.
+- Made uploaded slime loops strictly interaction-gated: no sample starts during navigation, type choice, play entry, or unmute. Mobile QA confirmed zero playback before contact, active playback while pressed, and immediate silence on release, with no browser errors.
 
 ## Complete
 

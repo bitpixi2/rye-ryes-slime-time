@@ -160,6 +160,28 @@ export class SampleLoopAudio {
     return this.activity;
   }
 
+  silenceInteraction() {
+    this.started = false;
+    this.activity = 0;
+    this.currentVolume = 0;
+    this.targetVolume = 0;
+    this.pressBoost = 0;
+    this.pressBoostRemaining = 0;
+    if (this.base) {
+      this.base.volume = 0;
+      this.base.pause?.();
+    }
+    if (this.accent) {
+      this.accent.volume = 0;
+      this.accent.pause?.();
+      try {
+        this.accent.currentTime = 0;
+      } catch {
+        // Immediate silence matters; rewinding is optional.
+      }
+    }
+  }
+
   /**
    * Adds a brief press emphasis. Bingsu gets its own crunchy one-shot; the
    * other types briefly swell their selected loop without stacking samples.
@@ -241,7 +263,7 @@ export class SampleLoopAudio {
 
     if (this.base) {
       this.base.volume = this.muted ? 0 : clamp(this.currentVolume, 0, this.profile.volumeCap);
-      if (this.started && !this.muted && this.unlocked && this.base.paused) {
+      if (this.started && this.targetVolume > 0.001 && !this.muted && this.unlocked && this.base.paused) {
         this.playTrack(this.base, { unlockBase: true });
       }
     }
