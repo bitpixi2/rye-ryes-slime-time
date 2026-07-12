@@ -41,9 +41,6 @@
         </section>
 
         <button class="exit-play" id="exitPlayButton">← ADD MORE</button>
-        <div class="play-callout" id="playCallout" aria-hidden="true">
-          <span>SWIRL</span><span>FOLD</span><span>MIX</span>
-        </div>
       </section>
 
       <section class="maker-panel" id="makerPanel" aria-label="Slime maker steps">
@@ -55,7 +52,7 @@
             <span id="stepCount">STEP 1 OF 4</span>
             <strong id="stepName">CHOOSE A TYPE</strong>
           </div>
-          <button class="step-arrow step-next" id="nextStepButton" aria-label="Next step: choose slime color">
+          <button class="step-arrow step-next" id="nextStepButton" aria-label="Next step: choose slime color" hidden disabled>
             <span id="nextStepLabel">COLORS</span><span class="arrow-glyph" aria-hidden="true">→</span>
           </button>
         </nav>
@@ -63,11 +60,11 @@
         <div class="step-content active" data-panel="type">
           <div class="choice-heading"><strong>Pick how it feels</strong><span>Swipe for more →</span></div>
           <div class="type-choice-row" role="group" aria-label="Slime physics type">
-            <button class="type-choice selected" data-slime-type="liquidy" aria-pressed="true"><i class="type-liquid" aria-hidden="true">〰</i><span>Liquidy<br />Swirl</span><small>Smooth + swirly</small></button>
-            <button class="type-choice" data-slime-type="cloud3d" aria-pressed="false"><i class="type-cloud" aria-hidden="true">≋</i><span>Cloud Slime<br />3D</span><small>Snowy + thick</small></button>
-            <button class="type-choice" data-slime-type="wax" aria-pressed="false"><i class="type-wax" aria-hidden="true">⌁</i><span>Crackle<br />Shell</span><small>Tap + crack</small></button>
+            <button class="type-choice" data-slime-type="liquidy" aria-pressed="false"><i class="type-liquid" aria-hidden="true">〰</i><span>Liquidy<br />Swirl</span><small>Smooth + swirly</small></button>
+            <button class="type-choice" data-slime-type="cloud3d" aria-pressed="false"><i class="type-cloud" aria-hidden="true">≋</i><span>Cloud Slime<br />3D</span><small>Grab + stack</small></button>
+            <button class="type-choice" data-slime-type="wax" aria-pressed="false"><i class="type-wax" aria-hidden="true">⌁</i><span>Crackle<br />Shell</span><small>3D tap + crack</small></button>
             <button class="type-choice" data-slime-type="bingsu" aria-pressed="false"><i class="type-bingsu" aria-hidden="true">▥</i><span>Bingsu<br />Crunch</span><small>Sparkly + crispy</small></button>
-            <button class="type-choice" data-slime-type="putty" aria-pressed="false"><i class="type-putty" aria-hidden="true">◉</i><span>Stretchy<br />Putty</span><small>Firm + stretchy</small></button>
+            <button class="type-choice" data-slime-type="putty" aria-pressed="false"><i class="type-putty" aria-hidden="true">◉</i><span>Stretchy<br />Putty</span><small>Two-finger stretch</small></button>
           </div>
         </div>
 
@@ -92,14 +89,6 @@
           </div>
         </div>
 
-        <div class="step-content squish-panel" data-panel="squish">
-          <div>
-            <p class="ready-kicker">YOUR SLIME IS READY</p>
-            <strong>Swirl every color!</strong>
-            <span>Drag slowly. Draw loops. Fold the colors together.</span>
-          </div>
-          <button class="primary-button squish-button" id="squishButton">FILL THE SCREEN <span aria-hidden="true">↗</span></button>
-        </div>
       </section>
     </main>
     <script type="module" src="/src/main.js"></script>

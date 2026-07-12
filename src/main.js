@@ -1,7 +1,8 @@
 import WebGLFluidEnhanced from 'webgl-fluid-enhanced';
 import * as THREE from 'three';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
-import Matter from 'matter-js';
+import { OglCrackleEngine } from './crackle-ogl-engine.js';
+import { StretchyPutty3DEngine } from './putty-3d-engine.js';
 import './style.css';
 
 const app = document.querySelector('#app');
@@ -31,6 +32,13 @@ const TAU = Math.PI * 2;
 const SLIME_TYPES = ['liquidy', 'cloud3d', 'wax', 'bingsu', 'putty'];
 const MIX_TYPES = ['sprinkles', 'stars', 'beads', 'glitter'];
 const MIX_LABELS = { sprinkles: 'Candy Sprinkles', stars: 'Jelly Stars', beads: 'Bubble Beads', glitter: 'Cosmic Glitter' };
+const LIQUID_CONTRAST_PALETTES = {
+  berry: ['#35f4dd', '#fff06a', '#ff4aab', '#72a5ff'],
+  lime: ['#8f3dff', '#ff4da6', '#294cff', '#fff15c'],
+  mango: ['#21e0dc', '#8045ff', '#18b7ff', '#ff3f93'],
+  aqua: ['#ff6f3d', '#ff4bb7', '#dfff43', '#8d43ff'],
+  galaxy: ['#fff04e', '#3ff4e0', '#ff4fa8', '#77a9ff'],
+};
 const MAX_MIX_BATCHES = 5;
 const SLIME_TOUCH_LAG_MS = 315;
 const SLIME_MAX_STEP_PER_FRAME = 4.2;
@@ -79,6 +87,7 @@ const state = {
   started: false,
   playMode: false,
   step: 'type',
+  typeChosen: false,
   slimeType: 'liquidy',
   theme: 'berry',
   mixins: new Map(MIX_TYPES.map((type) => [type, 0])),
@@ -99,10 +108,14 @@ const state = {
   hintTimer: 0,
   hapticCueCount: 0,
   textureHapticCount: 0,
+  liquidClickCount: 0,
 };
 
 const requestedSlimeType = new URLSearchParams(window.location.search).get('type');
-if (SLIME_TYPES.includes(requestedSlimeType)) state.slimeType = requestedSlimeType;
+if (SLIME_TYPES.includes(requestedSlimeType)) {
+  state.slimeType = requestedSlimeType;
+  state.typeChosen = true;
+}
 
 try {
   const saved = JSON.parse(localStorage.getItem('rye-ryes-slime-time-recipe') || '{}');
@@ -116,6 +129,7 @@ class SlimeAudio {
   constructor() {
     this.context = null;
     this.master = null;
+    this.compressor = null;
     this.noiseBuffer = null;
     this.foamBuffer = null;
     this.lastDragSound = 0;
@@ -126,6 +140,7 @@ class SlimeAudio {
     this.waxCrackleCount = 0;
     this.bingsuCrunchCount = 0;
     this.airPopCount = 0;
+    this.shinySparkleCount = 0;
     this.lastCrunchSound = { wax: 0, bingsu: 0 };
   }
 
@@ -136,8 +151,14 @@ class SlimeAudio {
       if (!AudioContext) return;
       this.context = new AudioContext();
       this.master = this.context.createGain();
-      this.master.gain.value = 0.68;
-      this.master.connect(this.context.destination);
+      this.compressor = this.context.createDynamicsCompressor();
+      this.master.gain.value = 0.62;
+      this.compressor.threshold.value = -18;
+      this.compressor.knee.value = 18;
+      this.compressor.ratio.value = 3.2;
+      this.compressor.attack.value = 0.006;
+      this.compressor.release.value = 0.16;
+      this.master.connect(this.compressor).connect(this.context.destination);
       this.noiseBuffer = this.createNoise();
       this.foamBuffer = this.createFoamCrackle();
     }
@@ -215,7 +236,14 @@ class SlimeAudio {
     const nowMs = performance.now();
     if (nowMs - this.lastDragSound < this.nextDragDelay) return false;
     this.lastDragSound = nowMs;
-    this.nextDragDelay = randomBetween(82, 148);
+    const dragDelay = {
+      liquidy: [82, 142],
+      cloud3d: [92, 154],
+      wax: [132, 205],
+      bingsu: [68, 118],
+      putty: [104, 168],
+    }[state.slimeType] || [82, 148];
+    this.nextDragDelay = randomBetween(...dragDelay);
     this.init();
     if (!this.context || state.muted) return false;
     this.textureBurstCount += 1;
@@ -228,11 +256,22 @@ class SlimeAudio {
     const foam = this.context.createBufferSource();
     const foamFilter = this.context.createBiquadFilter();
     const foamGain = this.context.createGain();
+    const suction = this.context.createBufferSource();
+    const suctionFilter = this.context.createBiquadFilter();
+    const suctionGain = this.context.createGain();
+
+    const profile = {
+      liquidy: { wet: 155, wetRange: 330, foam: 680, foamRange: 980, suction: 96 },
+      cloud3d: { wet: 92, wetRange: 220, foam: 920, foamRange: 1250, suction: 72 },
+      wax: { wet: 145, wetRange: 170, foam: 1450, foamRange: 850, suction: 88 },
+      bingsu: { wet: 125, wetRange: 260, foam: 980, foamRange: 1650, suction: 84 },
+      putty: { wet: 175, wetRange: 280, foam: 520, foamRange: 780, suction: 112 },
+    }[state.slimeType];
 
     goosh.buffer = this.noiseBuffer;
     goosh.playbackRate.value = 0.4 + amount * 0.3;
     gooshFilter.type = 'lowpass';
-    gooshFilter.frequency.value = 125 + amount * 310 + touches * 18;
+    gooshFilter.frequency.value = profile.wet + amount * profile.wetRange + touches * 14;
     gooshFilter.Q.value = 0.9;
     gooshGain.gain.setValueAtTime(0.0001, now);
     gooshGain.gain.exponentialRampToValueAtTime(0.022 + amount * 0.045, now + 0.026);
@@ -242,20 +281,32 @@ class SlimeAudio {
     foam.buffer = this.foamBuffer;
     foam.playbackRate.value = 0.9 + Math.random() * 0.55 + amount * 0.22;
     foamFilter.type = 'bandpass';
-    foamFilter.frequency.value = 610 + amount * 1020 + Math.random() * 280;
+    foamFilter.frequency.value = profile.foam + amount * profile.foamRange + Math.random() * 260;
     foamFilter.Q.value = 0.75 + touches * 0.16;
     foamGain.gain.setValueAtTime(0.0001, now);
     foamGain.gain.exponentialRampToValueAtTime(0.012 + amount * 0.026, now + 0.012);
     foamGain.gain.setValueAtTime(0.01 + amount * 0.02, now + 0.07);
     foamGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
 
+    suction.buffer = this.noiseBuffer;
+    suction.playbackRate.value = 0.22 + amount * 0.13;
+    suctionFilter.type = 'bandpass';
+    suctionFilter.frequency.setValueAtTime(profile.suction + amount * 42, now);
+    suctionFilter.frequency.exponentialRampToValueAtTime(Math.max(48, profile.suction * 0.62), now + 0.24);
+    suctionFilter.Q.value = 1.45;
+    suctionGain.gain.setValueAtTime(0.0001, now);
+    suctionGain.gain.exponentialRampToValueAtTime(0.014 + amount * 0.018, now + 0.035);
+    suctionGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+
     goosh.connect(gooshFilter).connect(gooshGain).connect(this.master);
     foam.connect(foamFilter).connect(foamGain).connect(this.master);
+    suction.connect(suctionFilter).connect(suctionGain).connect(this.master);
     goosh.start(now);
     foam.start(now + Math.random() * 0.018);
+    suction.start(now + 0.006);
     goosh.stop(now + 0.22);
     foam.stop(now + 0.19);
-    if (state.slimeType === 'wax') this.crunchTexture('wax', amount * 0.72);
+    suction.stop(now + 0.27);
     if (state.slimeType === 'bingsu') this.crunchTexture('bingsu', amount * 1.08);
     return true;
   }
@@ -367,26 +418,43 @@ class SlimeAudio {
     foam.stop(now + 0.15);
   }
 
-  sparkle() {
+  sparkle(kind = 'sprinkles') {
     this.init();
     if (!this.context || state.muted) return;
-    [0, 1, 2, 3].forEach((index) => {
-      const now = this.context.currentTime + index * 0.045;
+    const sprinkle = kind === 'sprinkles';
+    const notes = sprinkle ? [1046.5, 1396.9, 1760, 2349.3, 3136] : [987.8, 1318.5, 1760, 2217.5];
+    notes.forEach((frequency, index) => {
+      const now = this.context.currentTime + index * (sprinkle ? 0.038 : 0.046);
+      const glint = this.context.createOscillator();
+      const glintFilter = this.context.createBiquadFilter();
+      const glintGain = this.context.createGain();
       const foam = this.context.createBufferSource();
       const filter = this.context.createBiquadFilter();
       const gain = this.context.createGain();
+      glint.type = index % 2 === 0 ? 'sine' : 'triangle';
+      glint.frequency.setValueAtTime(frequency * randomBetween(0.985, 1.018), now);
+      glint.frequency.exponentialRampToValueAtTime(frequency * 1.035, now + 0.09);
+      glintFilter.type = 'highpass';
+      glintFilter.frequency.value = 760;
+      glintGain.gain.setValueAtTime(0.0001, now);
+      glintGain.gain.exponentialRampToValueAtTime(sprinkle ? 0.027 : 0.019, now + 0.006);
+      glintGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13 + index * 0.008);
       foam.buffer = this.foamBuffer;
-      foam.playbackRate.value = 1.1 + Math.random() * 0.8;
-      filter.type = 'bandpass';
-      filter.frequency.value = 850 + index * 260 + Math.random() * 180;
-      filter.Q.value = 0.9;
-      gain.gain.setValueAtTime(0.022, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+      foam.playbackRate.value = 1.8 + Math.random() * 1.4;
+      filter.type = 'highpass';
+      filter.frequency.value = 1800 + index * 310 + Math.random() * 240;
+      filter.Q.value = 0.72;
+      gain.gain.setValueAtTime(sprinkle ? 0.014 : 0.01, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+      glint.connect(glintFilter).connect(glintGain).connect(this.master);
       foam.connect(filter).connect(gain).connect(this.master);
+      glint.start(now);
       foam.start(now);
-      foam.stop(now + 0.11);
+      glint.stop(now + 0.16 + index * 0.008);
+      foam.stop(now + 0.085);
     });
-    this.foamCrunchCount += 4;
+    this.shinySparkleCount += notes.length;
+    this.foamCrunchCount += notes.length;
   }
 }
 
@@ -446,6 +514,7 @@ class ToppingLayer {
       for (let index = existing.length; index < desired; index += 1) syncedParticles.push(this.makeParticle(type));
     }
     this.particles = syncedParticles;
+    this.attachToMaterial(this.particles);
   }
 
   addBatch(type) {
@@ -462,6 +531,7 @@ class ToppingLayer {
     const ndy = dy / state.toppingHeight;
     const radius = 0.15;
     for (const particle of this.particles) {
+      if (particle.anchorKind) continue;
       const offsetX = particle.x - nx;
       const offsetY = particle.y - ny;
       const distance = Math.hypot(offsetX, offsetY);
@@ -483,12 +553,114 @@ class ToppingLayer {
       particle.vx += Math.cos(angle) * randomBetween(0.0005, 0.0022);
       particle.vy += Math.sin(angle) * randomBetween(0.0005, 0.0022);
     }
+    this.attachToMaterial(particles);
+  }
+
+  clearAnchor(particle) {
+    delete particle.anchorKind;
+    delete particle.anchorIndex;
+    delete particle.anchorOffsetX;
+    delete particle.anchorOffsetY;
+    delete particle.anchorT;
+    delete particle.anchorSide;
+    delete particle.anchorAngle;
+  }
+
+  attachToMaterial(particles = this.particles) {
+    const attachable = particles.filter((particle) => particle.type !== 'bubble');
+    if (state.slimeType === 'cloud3d' && cloudSlime?.blobs?.length) {
+      attachable.forEach((particle) => {
+        const nearest = cloudSlime.blobs
+          .map((blob, index) => ({
+            index,
+            x: blob.x,
+            y: 1 - blob.y,
+            distance: Math.hypot(particle.x - blob.x, particle.y - (1 - blob.y)),
+          }))
+          .sort((first, second) => first.distance - second.distance)[0];
+        particle.anchorKind = 'cloud';
+        particle.anchorIndex = nearest.index;
+        particle.anchorOffsetX = clamp(particle.x - nearest.x, -0.065, 0.065);
+        particle.anchorOffsetY = clamp(particle.y - nearest.y, -0.065, 0.065);
+        particle.vx = 0;
+        particle.vy = 0;
+      });
+      return;
+    }
+    if (state.slimeType === 'putty' && puttySlime?.metrics?.endpoints?.length === 2) {
+      const [start, finish] = puttySlime.metrics.endpoints;
+      const lineX = finish.x - start.x;
+      const lineY = finish.y - start.y;
+      const lineLengthSquared = Math.max(0.0001, lineX * lineX + lineY * lineY);
+      attachable.forEach((particle) => {
+        const amount = clamp(((particle.x - start.x) * lineX + (particle.y - start.y) * lineY) / lineLengthSquared, 0.035, 0.965);
+        const center = puttySlime.surfacePoint?.(amount, 0);
+        const nearby = puttySlime.surfacePoint?.(clamp(amount + 0.018, 0, 1), 0);
+        if (!center || !nearby) {
+          this.clearAnchor(particle);
+          return;
+        }
+        const tangentX = nearby.x - center.x;
+        const tangentY = nearby.y - center.y;
+        const tangentLength = Math.max(0.0001, Math.hypot(tangentX, tangentY));
+        const perpendicularX = -tangentY / tangentLength;
+        const perpendicularY = tangentX / tangentLength;
+        const distanceFromCurve = Math.hypot(particle.x - center.x, particle.y - center.y);
+        particle.anchorKind = 'putty';
+        particle.anchorT = amount;
+        particle.anchorSide = distanceFromCurve > 0.11
+          ? randomBetween(-0.045, 0.045)
+          : clamp((particle.x - center.x) * perpendicularX + (particle.y - center.y) * perpendicularY, -0.055, 0.055);
+        particle.anchorAngle = particle.angle - center.angle;
+        const surface = puttySlime.surfacePoint(amount, particle.anchorSide);
+        particle.x = surface.x;
+        particle.y = surface.y;
+        particle.vx = 0;
+        particle.vy = 0;
+      });
+      return;
+    }
+    attachable.forEach((particle) => this.clearAnchor(particle));
+  }
+
+  reanchorAll() {
+    this.attachToMaterial(this.particles);
+  }
+
+  updateAnchor(particle, frame) {
+    if (particle.anchorKind === 'cloud' && state.slimeType === 'cloud3d' && cloudSlime?.blobs?.[particle.anchorIndex]) {
+      const blob = cloudSlime.blobs[particle.anchorIndex];
+      const targetX = blob.x + particle.anchorOffsetX;
+      const targetY = 1 - blob.y + particle.anchorOffsetY;
+      const follow = 1 - 0.18 ** frame;
+      particle.x += (targetX - particle.x) * follow;
+      particle.y += (targetY - particle.y) * follow;
+      particle.vx = 0;
+      particle.vy = 0;
+      particle.angle += particle.spin * frame * 0.12;
+      return true;
+    }
+    if (particle.anchorKind === 'putty' && state.slimeType === 'putty' && puttySlime?.surfacePoint) {
+      const surface = puttySlime.surfacePoint(particle.anchorT, particle.anchorSide);
+      if (surface) {
+        const follow = 1 - 0.12 ** frame;
+        particle.x += (surface.x - particle.x) * follow;
+        particle.y += (surface.y - particle.y) * follow;
+        particle.angle = surface.angle + particle.anchorAngle;
+        particle.vx = 0;
+        particle.vy = 0;
+        return true;
+      }
+    }
+    if (particle.anchorKind) this.clearAnchor(particle);
+    return false;
   }
 
   update(milliseconds) {
     const frame = clamp(milliseconds / 16.6667, 0.2, 2.4);
     for (let index = 0; index < this.particles.length; index += 1) {
       const particle = this.particles[index];
+      if (this.updateAnchor(particle, frame)) continue;
       const ambient = prefersReducedMotion ? 0 : 0.00000035;
       particle.vx += Math.sin(state.time * 0.00034 + particle.phase + particle.y * 7) * ambient * frame;
       particle.vy += Math.cos(state.time * 0.00029 + particle.phase + particle.x * 8) * ambient * frame;
@@ -527,7 +699,7 @@ class ToppingLayer {
     const unit = Math.min(width, height) / 390;
 
     for (const particle of this.particles) {
-      if (particle.type === 'bubble' && (state.slimeType === 'wax' || state.slimeType === 'bingsu')) continue;
+      if (particle.type === 'bubble' && state.slimeType !== 'liquidy') continue;
       const x = particle.x * width;
       const y = particle.y * height;
       context.save();
@@ -594,7 +766,7 @@ class ToppingLayer {
 class CloudSlimeEngine {
   constructor(canvas) {
     this.canvas = canvas;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.15 : 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -607,6 +779,9 @@ class CloudSlimeEngine {
     this.camera.position.set(0, -3.15, 4.7);
     this.camera.lookAt(0, 0.05, -0.12);
     this.group = new THREE.Group();
+    this.baseScale = new THREE.Vector3(1, 1, 1);
+    this.targetScale = new THREE.Vector3(1, 1, 1);
+    this.hasResized = false;
     this.scene.add(this.group);
     this.material = new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
@@ -657,6 +832,8 @@ class CloudSlimeEngine {
     this.scene.add(rimLight);
 
     this.palette = [];
+    this.blobs = this.createBlobs();
+    this.grabs = new Map();
     this.touchFolds = [];
     this.rebuildElapsed = 0;
     this.rebuildInterval = isMobile ? 40 : 1000 / 30;
@@ -664,6 +841,22 @@ class CloudSlimeEngine {
     this.rebuildCount = 0;
     this.setTheme();
     this.rebuildVolume();
+  }
+
+  createBlobs() {
+    const columns = 5;
+    const rows = 6;
+    return Array.from({ length: columns * rows }, (_, index) => {
+      const row = Math.floor(index / columns);
+      const column = index % columns;
+      const phase = index * 1.913;
+      return {
+        x: 0.13 + column * 0.185 + Math.sin(phase) * 0.009,
+        y: 0.09 + row * 0.164 + Math.cos(phase * 1.17) * 0.009,
+        colorIndex: column + row * 2,
+        strength: 0.56 + ((index * 7) % 5) * 0.012,
+      };
+    });
   }
 
   setTheme() {
@@ -682,15 +875,70 @@ class CloudSlimeEngine {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
     const tallFill = clamp(0.75 / Math.max(0.35, aspect), 1, 1.15);
-    this.group.scale.set(Math.max(1.48, aspect * 1.9), 2.12 * tallFill, 0.92);
+    this.baseScale.set(Math.max(1.68, aspect * 2), 2.48 * tallFill, 0.92);
+    this.updateTargetScale();
+    if (!this.hasResized) this.group.scale.copy(this.targetScale);
+    this.hasResized = true;
   }
 
-  touch(x, y, dx, dy) {
+  updateTargetScale() {
+    const spread = this.stackMetrics.spreadRadius;
+    const compactness = clamp((0.31 - spread) / 0.2, 0, 1);
+    this.targetScale.set(
+      THREE.MathUtils.lerp(this.baseScale.x, 2.26, compactness),
+      THREE.MathUtils.lerp(this.baseScale.y, 2.26, compactness),
+      THREE.MathUtils.lerp(this.baseScale.z, 1.34, compactness),
+    );
+  }
+
+  touch(x, y, dx, dy, pointerId = 'pointer', isStart = false) {
     const width = Math.max(1, state.toppingWidth);
     const height = Math.max(1, state.toppingHeight);
+    const normalizedX = clamp(x / width, 0.04, 0.96);
+    const normalizedY = clamp(1 - y / height, 0.04, 0.96);
+    if (isStart || !this.grabs.has(pointerId)) {
+      if (isStart) {
+        const claimed = new Set([...this.grabs.values()].flatMap((grab) => grab.indices));
+        const nearest = this.blobs
+          .map((blob, index) => ({ index, distance: Math.hypot(blob.x - normalizedX, blob.y - normalizedY) }))
+          .filter(({ index }) => !claimed.has(index))
+          .sort((a, b) => a.distance - b.distance);
+        const local = nearest.filter(({ distance }) => distance < 0.25);
+        this.grabs.set(pointerId, {
+          indices: (local.length >= 4 ? local : nearest).slice(0, isMobile ? 8 : 7).map(({ index }) => index),
+          lastX: normalizedX,
+          lastY: normalizedY,
+        });
+      }
+    }
+    const grab = this.grabs.get(pointerId);
+    if (grab) {
+      grab.lastX = normalizedX;
+      grab.lastY = normalizedY;
+      const moveX = clamp(dx / width * 1.45, -0.055, 0.055);
+      const moveY = clamp(-dy / height * 1.45, -0.055, 0.055);
+      const grabbed = new Set(grab.indices);
+      grab.indices.forEach((index) => {
+        const blob = this.blobs[index];
+        blob.x = clamp(blob.x + moveX, 0.045, 0.955);
+        blob.y = clamp(blob.y + moveY, 0.045, 0.955);
+        const compact = Math.hypot(moveX, moveY) > 0.0001 ? 0.022 : 0.006;
+        blob.x += (normalizedX - blob.x) * compact;
+        blob.y += (normalizedY - blob.y) * compact;
+      });
+      this.blobs.forEach((blob, index) => {
+        if (grabbed.has(index)) return;
+        const distance = Math.hypot(blob.x - normalizedX, blob.y - normalizedY);
+        if (distance < 0.16) {
+          const influence = (1 - distance / 0.16) ** 2 * 0.2;
+          blob.x = clamp(blob.x + moveX * influence, 0.045, 0.955);
+          blob.y = clamp(blob.y + moveY * influence, 0.045, 0.955);
+        }
+      });
+    }
     const fold = {
-      x: clamp(x / width, 0.055, 0.945),
-      y: clamp(1 - y / height, 0.055, 0.945),
+      x: normalizedX,
+      y: normalizedY,
       pullX: clamp(dx / width * 17, -0.15, 0.15),
       pullY: clamp(-dy / height * 17, -0.15, 0.15),
       age: 0,
@@ -713,25 +961,34 @@ class CloudSlimeEngine {
     this.dirty = true;
   }
 
+  release(pointerId) {
+    const grab = this.grabs.get(pointerId);
+    if (grab) {
+      grab.indices.forEach((index) => {
+        const blob = this.blobs[index];
+        blob.x = clamp(blob.x + (grab.lastX - blob.x) * 0.48, 0.045, 0.955);
+        blob.y = clamp(blob.y + (grab.lastY - blob.y) * 0.48, 0.045, 0.955);
+      });
+      this.dirty = true;
+    }
+    this.grabs.delete(pointerId);
+  }
+
   foldWeight(fold) {
     return fold.strength * Math.max(0, 1 - fold.age / fold.life) ** 2;
   }
 
   addBaseMass() {
-    const columns = 5;
-    const rows = 6;
-    for (let row = 0; row < rows; row += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const index = row * columns + column;
-        const phase = index * 1.913;
-        const baseX = 0.13 + column * 0.185 + Math.sin(phase) * 0.009;
-        const baseY = 0.09 + row * 0.164 + Math.cos(phase * 1.17) * 0.009;
-        let blobX = baseX;
-        let blobY = baseY;
-        let blobZ = 0.485;
+    this.blobs.forEach((blob, index) => {
+        let blobX = blob.x;
+        let blobY = blob.y;
+        const nearby = this.blobs.reduce((count, neighbor, neighborIndex) => (
+          neighborIndex !== index && Math.hypot(neighbor.x - blob.x, neighbor.y - blob.y) < 0.145 ? count + 1 : count
+        ), 0);
+        let blobZ = 0.485 + Math.min(0.19, nearby * 0.026);
         for (const fold of this.touchFolds) {
           const fade = this.foldWeight(fold);
-          const distanceSquared = (baseX - fold.x) ** 2 + (baseY - fold.y) ** 2;
+          const distanceSquared = (blob.x - fold.x) ** 2 + (blob.y - fold.y) ** 2;
           const influence = Math.exp(-distanceSquared / 0.025) * fade;
           blobX += fold.pullX * influence * 0.34;
           blobY += fold.pullY * influence * 0.34;
@@ -741,12 +998,27 @@ class CloudSlimeEngine {
           clamp(blobX, 0.045, 0.955),
           clamp(blobY, 0.045, 0.955),
           blobZ,
-          0.56 + ((index * 7) % 5) * 0.012,
+          blob.strength + Math.min(0.1, nearby * 0.012),
           12,
-          this.palette[(column + row * 2) % this.palette.length],
+          this.palette[blob.colorIndex % this.palette.length],
         );
-      }
-    }
+    });
+  }
+
+  get stackMetrics() {
+    const center = this.blobs.reduce((sum, blob) => ({ x: sum.x + blob.x, y: sum.y + blob.y }), { x: 0, y: 0 });
+    center.x /= this.blobs.length;
+    center.y /= this.blobs.length;
+    const spreadRadius = this.blobs.reduce((sum, blob) => sum + Math.hypot(blob.x - center.x, blob.y - center.y), 0) / this.blobs.length;
+    const stackedBlobs = this.blobs.filter((blob, index) => this.blobs.some((other, otherIndex) => (
+      otherIndex !== index && Math.hypot(other.x - blob.x, other.y - blob.y) < 0.075
+    ))).length;
+    return {
+      center: { x: Number(center.x.toFixed(2)), y: Number((1 - center.y).toFixed(2)) },
+      spreadRadius: Number(spreadRadius.toFixed(2)),
+      stackedBlobs,
+      activeGrabs: this.grabs.size,
+    };
   }
 
   addFibrousFolds() {
@@ -783,16 +1055,22 @@ class CloudSlimeEngine {
   }
 
   addSnowyRidges() {
-    for (let ridge = 0; ridge < 5; ridge += 1) {
-      for (let point = 0; point < 14; point += 1) {
-        const amount = point / 13;
-        const x = 0.075 + amount * 0.85;
-        const y = 0.15 + ridge * 0.17
-          + Math.sin(amount * TAU * (1.05 + ridge * 0.08) + ridge * 1.4) * 0.028;
-        const z = 0.585 + Math.sin(amount * Math.PI + ridge) * 0.018;
-        this.volume.addBall(x, y, z, 0.054 + (point % 3) * 0.004, 14.2, this.palette[(ridge + point) % this.palette.length]);
+    this.blobs.forEach((blob, index) => {
+      const nearby = this.blobs.filter((other, otherIndex) => (
+        otherIndex !== index && Math.hypot(other.x - blob.x, other.y - blob.y) < 0.145
+      )).length;
+      for (let fiber = 0; fiber < 2; fiber += 1) {
+        const angle = index * 1.73 + fiber * Math.PI;
+        this.volume.addBall(
+          clamp(blob.x + Math.cos(angle) * 0.026, 0.035, 0.965),
+          clamp(blob.y + Math.sin(angle) * 0.022, 0.035, 0.965),
+          0.575 + Math.min(0.17, nearby * 0.024),
+          0.058 + (index % 3) * 0.004,
+          14.2,
+          this.palette[(blob.colorIndex + fiber) % this.palette.length],
+        );
       }
-    }
+    });
   }
 
   rebuildVolume() {
@@ -826,6 +1104,8 @@ class CloudSlimeEngine {
       this.rebuildVolume();
       this.rebuildElapsed %= this.rebuildInterval;
     }
+    this.updateTargetScale();
+    this.group.scale.lerp(this.targetScale, 1 - Math.exp(-dt / 360));
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -839,392 +1119,6 @@ class CloudSlimeEngine {
   }
 }
 
-class PuttyEngine {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.context = canvas.getContext('2d');
-    this.engine = Matter.Engine.create({ gravity: { x: 0, y: 0 } });
-    this.nodes = [];
-    this.constraints = [];
-    this.width = 1;
-    this.height = 1;
-  }
-
-  resize(width, height) {
-    this.width = Math.max(1, width);
-    this.height = Math.max(1, height);
-    const dpr = Math.min(devicePixelRatio || 1, isMobile ? 1.2 : 1.5);
-    this.canvas.width = Math.round(this.width * dpr);
-    this.canvas.height = Math.round(this.height * dpr);
-    this.context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    Matter.Composite.clear(this.engine.world, false, true);
-    this.nodes = [];
-    this.constraints = [];
-    const columns = isMobile ? 12 : 16;
-    const rows = isMobile ? 9 : 11;
-    const gapX = this.width / (columns - 1);
-    const gapY = this.height / (rows - 1);
-    for (let row = 0; row < rows; row += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const body = Matter.Bodies.circle(column * gapX, row * gapY, Math.min(gapX, gapY) * 0.34, {
-          isStatic: row === 0 || column === 0 || row === rows - 1 || column === columns - 1,
-          frictionAir: 0.16,
-          restitution: 0,
-          density: 0.002,
-        });
-        body.homeX = column * gapX;
-        body.homeY = row * gapY;
-        body.colorIndex = (column + row * 2) % themes[state.theme].dyePalette.length;
-        this.nodes.push(body);
-      }
-    }
-    const link = (a, b, stiffness = 0.24) => {
-      const constraint = Matter.Constraint.create({ bodyA: a, bodyB: b, stiffness, damping: 0.12, length: Math.hypot(a.position.x - b.position.x, a.position.y - b.position.y) });
-      this.constraints.push(constraint);
-    };
-    for (let row = 0; row < rows; row += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const index = row * columns + column;
-        if (column < columns - 1) link(this.nodes[index], this.nodes[index + 1]);
-        if (row < rows - 1) link(this.nodes[index], this.nodes[index + columns]);
-        if (column < columns - 1 && row < rows - 1 && (column + row) % 2 === 0) link(this.nodes[index], this.nodes[index + columns + 1], 0.15);
-      }
-    }
-    Matter.Composite.add(this.engine.world, [...this.nodes, ...this.constraints]);
-  }
-
-  touch(x, y, dx, dy) {
-    const radius = Math.min(this.width, this.height) * 0.28;
-    this.nodes.forEach((body) => {
-      if (body.isStatic) return;
-      const ox = body.position.x - x;
-      const oy = body.position.y - y;
-      const distance = Math.hypot(ox, oy);
-      if (distance > radius) return;
-      const influence = (1 - distance / radius) ** 2;
-      Matter.Body.applyForce(body, body.position, { x: dx * 0.000035 * influence, y: dy * 0.000035 * influence });
-    });
-  }
-
-  update(dt) {
-    this.nodes.forEach((body) => {
-      if (body.isStatic) return;
-      Matter.Body.applyForce(body, body.position, {
-        x: (body.homeX - body.position.x) * 0.00000065,
-        y: (body.homeY - body.position.y) * 0.00000065,
-      });
-    });
-    const substeps = Math.max(1, Math.ceil(dt / 16.6667));
-    for (let index = 0; index < substeps; index += 1) Matter.Engine.update(this.engine, dt / substeps);
-    this.render();
-  }
-
-  render() {
-    const context = this.context;
-    const palette = themes[state.theme].dyePalette;
-    const background = context.createLinearGradient(0, 0, this.width, this.height);
-    background.addColorStop(0, palette[0]);
-    background.addColorStop(0.48, palette[1]);
-    background.addColorStop(1, palette[2]);
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = 1;
-    context.fillStyle = background;
-    context.fillRect(0, 0, this.width, this.height);
-    context.lineCap = 'round';
-    context.globalCompositeOperation = 'screen';
-    context.globalAlpha = 0.26;
-    context.lineWidth = Math.min(this.width, this.height) * 0.055;
-    this.constraints.forEach((constraint, index) => {
-      context.strokeStyle = palette[index % palette.length];
-      context.beginPath();
-      context.moveTo(constraint.bodyA.position.x, constraint.bodyA.position.y);
-      context.lineTo(constraint.bodyB.position.x, constraint.bodyB.position.y);
-      context.stroke();
-    });
-    context.globalCompositeOperation = 'overlay';
-    context.globalAlpha = 0.5;
-    const radius = Math.min(this.width, this.height) * (isMobile ? 0.06 : 0.05);
-    this.nodes.forEach((body) => {
-      context.fillStyle = palette[body.colorIndex % palette.length];
-      context.beginPath();
-      context.arc(body.position.x, body.position.y, radius, 0, TAU);
-      context.fill();
-    });
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = 1;
-  }
-
-  dispose() {
-    Matter.Composite.clear(this.engine.world, false, true);
-    Matter.Engine.clear(this.engine);
-  }
-}
-
-class WaxCrackleEngine {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.context = canvas.getContext('2d', { alpha: false });
-    this.shellCanvas = document.createElement('canvas');
-    this.shellContext = this.shellCanvas.getContext('2d');
-    this.width = 1;
-    this.height = 1;
-    this.dpr = 1;
-    this.cracks = [];
-    this.chips = [];
-    this.folds = [];
-    this.fractureBursts = 0;
-    this.lastCrackAt = 0;
-    this.lastCrackX = -1;
-    this.lastCrackY = -1;
-    this.renderElapsed = 1000;
-    this.shellDirty = true;
-  }
-
-  resize(width, height) {
-    this.width = Math.max(1, width);
-    this.height = Math.max(1, height);
-    this.dpr = Math.min(devicePixelRatio || 1, isMobile ? 1.25 : 1.55);
-    this.canvas.width = Math.round(this.width * this.dpr);
-    this.canvas.height = Math.round(this.height * this.dpr);
-    this.context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.shellCanvas.width = Math.round(this.width * this.dpr);
-    this.shellCanvas.height = Math.round(this.height * this.dpr);
-    this.shellContext.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.shellDirty = true;
-    this.render();
-  }
-
-  touch(x, y, dx, dy) {
-    const nx = clamp(x / this.width, 0, 1);
-    const ny = clamp(y / this.height, 0, 1);
-    const speed = Math.hypot(dx, dy);
-    const newest = this.folds[0];
-    if (newest && newest.age < 0.11 && Math.hypot(newest.x - nx, newest.y - ny) < 0.09) {
-      newest.x += (nx - newest.x) * 0.38;
-      newest.y += (ny - newest.y) * 0.38;
-      newest.pullX += (dx / this.width - newest.pullX) * 0.28;
-      newest.pullY += (dy / this.height - newest.pullY) * 0.28;
-      newest.age = 0;
-    } else {
-      this.folds.unshift({ x: nx, y: ny, pullX: dx / this.width, pullY: dy / this.height, age: 0 });
-      this.folds.length = Math.min(this.folds.length, 8);
-    }
-
-    const now = performance.now();
-    const distance = Math.hypot(nx - this.lastCrackX, ny - this.lastCrackY);
-    const first = this.fractureBursts === 0;
-    if (first || (now - this.lastCrackAt > 72 && (distance > 0.035 || speed > 2.4))) {
-      this.fracture(nx, ny, clamp(0.55 + speed * 0.055, 0.55, 1.15));
-    }
-  }
-
-  fracture(x, y, pressure) {
-    const first = this.fractureBursts === 0;
-    const rays = first ? 11 : 5 + Math.round(pressure * 2);
-    const minDimension = Math.min(this.width, this.height);
-    const baseAngle = Math.random() * TAU;
-    for (let ray = 0; ray < rays; ray += 1) {
-      let angle = baseAngle + ray * TAU / rays + randomBetween(-0.18, 0.18);
-      let fromX = x;
-      let fromY = y;
-      const segments = first ? 4 + Math.floor(Math.random() * 3) : 3 + Math.floor(Math.random() * 3);
-      for (let segment = 0; segment < segments; segment += 1) {
-        angle += randomBetween(-0.24, 0.24);
-        const length = minDimension * randomBetween(first ? 0.04 : 0.027, first ? 0.085 : 0.062) * (1 - segment * 0.055);
-        const toX = clamp(fromX + Math.cos(angle) * length / this.width, -0.02, 1.02);
-        const toY = clamp(fromY + Math.sin(angle) * length / this.height, -0.02, 1.02);
-        this.cracks.push({ x1: fromX, y1: fromY, x2: toX, y2: toY, width: randomBetween(1.5, first ? 4.2 : 3.2) });
-        if (segment > 0 && Math.random() < 0.24) {
-          const branchAngle = angle + randomBetween(-1, 1);
-          const branchLength = length * randomBetween(0.38, 0.65);
-          this.cracks.push({
-            x1: fromX,
-            y1: fromY,
-            x2: clamp(fromX + Math.cos(branchAngle) * branchLength / this.width, 0, 1),
-            y2: clamp(fromY + Math.sin(branchAngle) * branchLength / this.height, 0, 1),
-            width: randomBetween(0.9, 2.1),
-          });
-        }
-        fromX = toX;
-        fromY = toY;
-      }
-    }
-    const chipCount = first ? 5 : 2 + Math.round(pressure * 2);
-    for (let index = 0; index < chipCount; index += 1) {
-      const angle = Math.random() * TAU;
-      const radius = minDimension * randomBetween(0.008, first ? 0.028 : 0.019);
-      this.chips.push({
-        x: clamp(x + Math.cos(angle) * radius * 1.8 / this.width, 0, 1),
-        y: clamp(y + Math.sin(angle) * radius * 1.8 / this.height, 0, 1),
-        radius,
-        sides: 3 + Math.floor(Math.random() * 3),
-        phase: Math.random() * TAU,
-      });
-    }
-    this.cracks = this.cracks.slice(-360);
-    this.chips = this.chips.slice(-90);
-    this.fractureBursts += 1;
-    this.lastCrackAt = performance.now();
-    this.lastCrackX = x;
-    this.lastCrackY = y;
-    this.shellDirty = true;
-    audio.crunchTexture('wax', first ? 1.1 : 0.58 + pressure * 0.26, { first, force: first });
-    haptic(first ? [28, 11, 18, 8, 13] : [13, 6, 10], first ? 1.42 : 1.28);
-  }
-
-  drawBase() {
-    const context = this.context;
-    const palette = themes[state.theme].dyePalette;
-    const width = this.width;
-    const height = this.height;
-    const unit = Math.min(width, height) / 390;
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = 1;
-    context.clearRect(0, 0, width, height);
-    const base = context.createLinearGradient(0, 0, width, height);
-    base.addColorStop(0, palette[0]);
-    base.addColorStop(0.34, palette[2] || palette[1]);
-    base.addColorStop(0.68, palette[1]);
-    base.addColorStop(1, palette[3] || palette[0]);
-    context.fillStyle = base;
-    context.fillRect(0, 0, width, height);
-
-    context.globalCompositeOperation = 'screen';
-    context.globalAlpha = 0.26;
-    context.lineCap = 'round';
-    for (let ribbon = 0; ribbon < 4; ribbon += 1) {
-      context.strokeStyle = palette[(ribbon + 1) % palette.length];
-      context.lineWidth = Math.min(width, height) * (0.17 + ribbon * 0.012);
-      context.beginPath();
-      context.moveTo(-width * 0.08, height * (0.16 + ribbon * 0.23));
-      context.bezierCurveTo(
-        width * 0.25, height * (0.02 + ribbon * 0.25),
-        width * 0.68, height * (0.32 + ribbon * 0.14),
-        width * 1.08, height * (0.14 + ribbon * 0.22),
-      );
-      context.stroke();
-    }
-
-    context.globalCompositeOperation = 'overlay';
-    this.folds.forEach((fold, index) => {
-      const fade = Math.max(0, 1 - fold.age / 2.7);
-      const radius = Math.min(width, height) * (0.12 + index * 0.008);
-      const gradient = context.createRadialGradient(fold.x * width, fold.y * height, 0, fold.x * width, fold.y * height, radius);
-      gradient.addColorStop(0, `rgba(20,0,40,${0.34 * fade})`);
-      gradient.addColorStop(0.46, `rgba(255,255,255,${0.2 * fade})`);
-      gradient.addColorStop(1, 'rgba(255,255,255,0)');
-      context.globalAlpha = 1;
-      context.fillStyle = gradient;
-      context.beginPath();
-      context.arc(fold.x * width, fold.y * height, radius, 0, TAU);
-      context.fill();
-    });
-
-    context.globalCompositeOperation = 'source-over';
-    const glaze = context.createLinearGradient(0, 0, 0, height);
-    glaze.addColorStop(0, 'rgba(255,255,255,.28)');
-    glaze.addColorStop(0.28, 'rgba(255,255,255,.04)');
-    glaze.addColorStop(1, 'rgba(30,0,55,.18)');
-    context.fillStyle = glaze;
-    context.fillRect(0, 0, width, height);
-    context.globalAlpha = 1;
-    context.lineWidth = unit;
-  }
-
-  rebuildShell() {
-    const context = this.shellContext;
-    const theme = themes[state.theme];
-    const width = this.width;
-    const height = this.height;
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = 1;
-    context.clearRect(0, 0, width, height);
-    const wax = context.createLinearGradient(0, 0, width, height);
-    wax.addColorStop(0, '#fff9ed');
-    wax.addColorStop(0.28, theme.palette[4] || '#ffe7f5');
-    wax.addColorStop(0.62, '#f8dff2');
-    wax.addColorStop(1, '#e8c8ed');
-    context.fillStyle = wax;
-    context.fillRect(0, 0, width, height);
-
-    context.globalAlpha = 0.2;
-    context.strokeStyle = theme.accent;
-    context.lineWidth = Math.max(12, Math.min(width, height) * 0.055);
-    context.lineCap = 'round';
-    for (let row = 0; row < 6; row += 1) {
-      context.beginPath();
-      context.moveTo(-width * 0.08, height * (0.08 + row * 0.19));
-      context.bezierCurveTo(width * 0.28, height * (0.02 + row * 0.2), width * 0.64, height * (0.23 + row * 0.15), width * 1.08, height * (0.09 + row * 0.18));
-      context.stroke();
-    }
-
-    context.globalCompositeOperation = 'destination-out';
-    context.globalAlpha = 1;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    this.cracks.forEach((crack) => {
-      context.lineWidth = crack.width;
-      context.beginPath();
-      context.moveTo(crack.x1 * width, crack.y1 * height);
-      context.lineTo(crack.x2 * width, crack.y2 * height);
-      context.stroke();
-    });
-    this.chips.forEach((chip) => {
-      context.beginPath();
-      for (let point = 0; point < chip.sides; point += 1) {
-        const angle = chip.phase + point * TAU / chip.sides;
-        const px = chip.x * width + Math.cos(angle) * chip.radius;
-        const py = chip.y * height + Math.sin(angle) * chip.radius;
-        if (point === 0) context.moveTo(px, py); else context.lineTo(px, py);
-      }
-      context.closePath();
-      context.fill();
-    });
-    context.globalCompositeOperation = 'source-over';
-    this.shellDirty = false;
-  }
-
-  drawCrackDepth() {
-    const context = this.context;
-    context.save();
-    context.globalCompositeOperation = 'multiply';
-    context.globalAlpha = 0.18;
-    context.strokeStyle = '#281326';
-    context.lineCap = 'round';
-    this.cracks.forEach((crack) => {
-      context.lineWidth = crack.width * 1.55;
-      context.beginPath();
-      context.moveTo(crack.x1 * this.width + 1.4, crack.y1 * this.height + 1.8);
-      context.lineTo(crack.x2 * this.width + 1.4, crack.y2 * this.height + 1.8);
-      context.stroke();
-    });
-    context.restore();
-  }
-
-  render() {
-    this.drawBase();
-    this.drawCrackDepth();
-    if (this.shellDirty) this.rebuildShell();
-    this.context.drawImage(this.shellCanvas, 0, 0, this.width, this.height);
-  }
-
-  update(dt) {
-    this.renderElapsed += dt;
-    this.folds.forEach((fold) => { fold.age += dt / 1000; });
-    this.folds = this.folds.filter((fold) => fold.age < 2.7);
-    if (this.renderElapsed >= 1000 / 30) {
-      this.render();
-      this.renderElapsed %= 1000 / 30;
-    }
-  }
-
-  get shellIntegrity() {
-    return Number(clamp(1 - (this.cracks.length + this.chips.length * 2) / 390, 0, 1).toFixed(2));
-  }
-
-  dispose() {}
-}
-
 class BingsuSlimeEngine {
   constructor(canvas) {
     this.canvas = canvas;
@@ -1234,6 +1128,10 @@ class BingsuSlimeEngine {
     this.dpr = 1;
     this.beads = [];
     this.folds = [];
+    this.dyeTrails = [];
+    this.flowX = 0;
+    this.flowY = 0;
+    this.flowTwist = 0;
     this.compression = 0;
     this.renderElapsed = 1000;
     this.createBeads();
@@ -1275,6 +1173,25 @@ class BingsuSlimeEngine {
     const ny = clamp(y / this.height, 0, 1);
     const ndx = dx / this.width;
     const ndy = dy / this.height;
+    this.flowX = clamp(this.flowX + dx * 0.82, -this.width * 0.38, this.width * 0.38);
+    this.flowY = clamp(this.flowY + dy * 0.82, -this.height * 0.38, this.height * 0.38);
+    this.flowTwist = clamp(this.flowTwist + (ndx - ndy) * 3.2, -1.4, 1.4);
+    const newestTrail = this.dyeTrails[0];
+    if (!newestTrail || newestTrail.age > 0.045 || Math.hypot(newestTrail.x - nx, newestTrail.y - ny) > 0.035) {
+      this.dyeTrails.unshift({
+        x: nx,
+        y: ny,
+        fromX: clamp(nx - ndx * 3.6, 0, 1),
+        fromY: clamp(ny - ndy * 3.6, 0, 1),
+        vx: ndx * 0.2,
+        vy: ndy * 0.2,
+        colorIndex: (this.dyeTrails.length * 2 + Math.round(nx * 7) + Math.round(ny * 5)) % themes[state.theme].dyePalette.length,
+        size: clamp(0.11 + Math.hypot(dx, dy) / Math.min(this.width, this.height) * 0.8, 0.11, 0.22),
+        age: 0,
+        life: 4.8,
+      });
+      this.dyeTrails.length = Math.min(this.dyeTrails.length, 22);
+    }
     const radius = 0.19;
     let compressed = 0;
     this.beads.forEach((bead) => {
@@ -1305,8 +1222,21 @@ class BingsuSlimeEngine {
     const frameScale = dt / 16.6667;
     this.renderElapsed += dt;
     this.compression *= 0.9 ** frameScale;
+    this.flowX *= 0.996 ** frameScale;
+    this.flowY *= 0.996 ** frameScale;
+    this.flowTwist *= 0.994 ** frameScale;
     this.folds.forEach((fold) => { fold.age += dt / 1000; });
     this.folds = this.folds.filter((fold) => fold.age < 2.5);
+    this.dyeTrails.forEach((trail) => {
+      trail.age += dt / 1000;
+      trail.x = clamp(trail.x + trail.vx * frameScale, -0.08, 1.08);
+      trail.y = clamp(trail.y + trail.vy * frameScale, -0.08, 1.08);
+      trail.fromX = clamp(trail.fromX + trail.vx * 0.32 * frameScale, -0.08, 1.08);
+      trail.fromY = clamp(trail.fromY + trail.vy * 0.32 * frameScale, -0.08, 1.08);
+      trail.vx *= 0.95 ** frameScale;
+      trail.vy *= 0.95 ** frameScale;
+    });
+    this.dyeTrails = this.dyeTrails.filter((trail) => trail.age < trail.life);
     this.beads.forEach((bead) => {
       bead.vx += (bead.homeX - bead.x) * 0.00055 * frameScale;
       bead.vy += (bead.homeY - bead.y) * 0.00055 * frameScale;
@@ -1335,7 +1265,12 @@ class BingsuSlimeEngine {
     context.globalCompositeOperation = 'source-over';
     context.globalAlpha = 1;
     context.clearRect(0, 0, width, height);
-    const base = context.createLinearGradient(0, 0, width, height);
+    const base = context.createLinearGradient(
+      -width * 0.18 + this.flowX,
+      -height * 0.14 + this.flowY,
+      width * 1.18 + this.flowX,
+      height * 1.14 + this.flowY,
+    );
     base.addColorStop(0, theme.base);
     base.addColorStop(0.28, palette[0]);
     base.addColorStop(0.58, palette[2] || palette[1]);
@@ -1349,11 +1284,55 @@ class BingsuSlimeEngine {
     for (let ribbon = 0; ribbon < 4; ribbon += 1) {
       context.strokeStyle = palette[(ribbon + 1) % palette.length];
       context.lineWidth = Math.min(width, height) * (0.2 + ribbon * 0.018);
+      const ribbonFlowX = this.flowX * (0.12 + ribbon * 0.035);
+      const ribbonFlowY = this.flowY * (0.1 + ribbon * 0.03);
+      const twist = this.flowTwist * height * (0.035 + ribbon * 0.008);
       context.beginPath();
-      context.moveTo(-width * 0.1, height * (0.12 + ribbon * 0.24));
-      context.bezierCurveTo(width * 0.22, height * (0.32 + ribbon * 0.14), width * 0.73, height * (0.02 + ribbon * 0.24), width * 1.1, height * (0.2 + ribbon * 0.22));
+      context.moveTo(-width * 0.1 + ribbonFlowX, height * (0.12 + ribbon * 0.24) + ribbonFlowY - twist);
+      context.bezierCurveTo(
+        width * 0.22 + ribbonFlowX * 1.8,
+        height * (0.32 + ribbon * 0.14) + ribbonFlowY + twist,
+        width * 0.73 + ribbonFlowX * 0.7,
+        height * (0.02 + ribbon * 0.24) + ribbonFlowY - twist,
+        width * 1.1 + ribbonFlowX,
+        height * (0.2 + ribbon * 0.22) + ribbonFlowY + twist,
+      );
       context.stroke();
     }
+
+    context.globalCompositeOperation = 'screen';
+    context.lineCap = 'round';
+    this.dyeTrails.forEach((trail) => {
+      const fade = Math.max(0, 1 - trail.age / trail.life) ** 0.7;
+      const startX = trail.fromX * width;
+      const startY = trail.fromY * height;
+      const endX = trail.x * width;
+      const endY = trail.y * height;
+      context.globalAlpha = 0.34 * fade;
+      context.strokeStyle = palette[trail.colorIndex % palette.length];
+      context.lineWidth = Math.min(width, height) * trail.size;
+      context.shadowColor = palette[(trail.colorIndex + 1) % palette.length];
+      context.shadowBlur = Math.min(width, height) * 0.07;
+      context.beginPath();
+      context.moveTo(startX, startY);
+      context.quadraticCurveTo(
+        (startX + endX) / 2 + this.flowTwist * 24,
+        (startY + endY) / 2 - this.flowTwist * 20,
+        endX,
+        endY,
+      );
+      context.stroke();
+      context.shadowBlur = 0;
+      const bloom = context.createRadialGradient(endX, endY, 0, endX, endY, Math.min(width, height) * trail.size * 0.75);
+      bloom.addColorStop(0, palette[(trail.colorIndex + 2) % palette.length]);
+      bloom.addColorStop(1, 'rgba(255,255,255,0)');
+      context.globalAlpha = 0.28 * fade;
+      context.fillStyle = bloom;
+      context.beginPath();
+      context.arc(endX, endY, Math.min(width, height) * trail.size * 0.75, 0, TAU);
+      context.fill();
+    });
+    context.shadowBlur = 0;
 
     context.globalCompositeOperation = 'overlay';
     this.folds.forEach((fold) => {
@@ -1536,20 +1515,33 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     if (state.slimeType === 'cloud3d') {
       cloudSlime = new CloudSlimeEngine(slimeCanvas);
       cloudSlime.resize(state.toppingWidth, state.toppingHeight);
+      toppings.reanchorAll();
       bindSlimeInput();
       state.webglAvailable = true;
       return;
     }
     if (state.slimeType === 'putty') {
-      puttySlime = new PuttyEngine(slimeCanvas);
+      puttySlime = new StretchyPutty3DEngine(slimeCanvas, {
+        getTheme: () => themes[state.theme],
+        isMobile,
+      });
       puttySlime.resize(state.toppingWidth, state.toppingHeight);
+      toppings.reanchorAll();
       bindSlimeInput();
       state.webglAvailable = true;
       return;
     }
     if (state.slimeType === 'wax') {
-      waxSlime = new WaxCrackleEngine(slimeCanvas);
+      waxSlime = new OglCrackleEngine(slimeCanvas, {
+        getTheme: () => themes[state.theme],
+        isMobile,
+        onCrack: ({ first, intensity }) => {
+          audio.crunchTexture('wax', intensity, { first, force: first });
+          haptic(first ? [28, 11, 18, 8, 13] : [14, 6, 11], first ? 1.42 : 1.3);
+        },
+      });
       waxSlime.resize(state.toppingWidth, state.toppingHeight);
+      toppings.reanchorAll();
       bindSlimeInput();
       state.webglAvailable = true;
       return;
@@ -1557,6 +1549,7 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     if (state.slimeType === 'bingsu') {
       bingsuSlime = new BingsuSlimeEngine(slimeCanvas);
       bingsuSlime.resize(state.toppingWidth, state.toppingHeight);
+      toppings.reanchorAll();
       bindSlimeInput();
       state.webglAvailable = true;
       return;
@@ -1572,6 +1565,7 @@ function initFluid({ replace = false, seedDelay = 100 } = {}) {
     simulation.canvas.removeEventListener('touchmove', simulation.handleTouchMove, true);
     window.removeEventListener('touchend', simulation.handleTouchEnd);
     simulation.pointers.length = 0;
+    toppings.reanchorAll();
     bindSlimeInput();
     state.webglAvailable = true;
     scheduleSeed(() => seedSlime(10), seedDelay);
@@ -1631,6 +1625,34 @@ function localFluidSplat(x, y, dx, dy, color, intensity = 0.12, forceScale = 7.5
     normalizedFluidColor(selectedColor, intensity),
   );
   state.splatCount += 1;
+}
+
+function smooshLiquid(x, y) {
+  if (!fluid) return null;
+  const contrast = LIQUID_CONTRAST_PALETTES[state.theme] || themes[state.theme].dyePalette;
+  const clickIndex = state.liquidClickCount;
+  const centerColor = contrast[clickIndex % contrast.length];
+  const ringRadius = Math.min(state.toppingWidth, state.toppingHeight) * (isMobile ? 0.1 : 0.086);
+  fluid.setConfig({ splatRadius: isMobile ? 4.9 : 4.25 });
+  localFluidSplat(x, y, 0, -2.5, centerColor, 0.085, 9);
+  for (let index = 0; index < 4; index += 1) {
+    const angle = clickIndex * 1.17 + index * TAU / 4;
+    const color = contrast[(clickIndex + index + 1) % contrast.length];
+    const offsetX = Math.cos(angle) * ringRadius;
+    const offsetY = Math.sin(angle) * ringRadius;
+    localFluidSplat(
+      x + offsetX,
+      y + offsetY,
+      -Math.cos(angle) * 21,
+      -Math.sin(angle) * 21,
+      color,
+      index % 2 === 0 ? 0.04 : 0.03,
+      10,
+    );
+  }
+  state.liquidClickCount += 1;
+  scheduleSeed(() => fluid?.setConfig({ splatRadius: isMobile ? 4.2 : 3.6 }), 145);
+  return centerColor;
 }
 
 function addSwirlGrid(count = 6, intensity = 0.06) {
@@ -1710,9 +1732,12 @@ function pointerDown(event) {
     color: palette[colorIndex],
   });
   const nudge = event.pressure > 0 ? event.pressure * 8 : 4;
-  if (state.slimeType === 'liquidy') localFluidSplat(position.x, position.y, nudge, -nudge * 0.4, palette[colorIndex], 0.02, 4);
-  else if (state.slimeType === 'cloud3d') cloudSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
-  else if (state.slimeType === 'putty') puttySlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
+  if (state.slimeType === 'liquidy') {
+    const contrastColor = smooshLiquid(position.x, position.y);
+    if (contrastColor) state.activePointers.get(event.pointerId).color = contrastColor;
+  }
+  else if (state.slimeType === 'cloud3d') cloudSlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
+  else if (state.slimeType === 'putty') puttySlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
   else if (state.slimeType === 'wax') waxSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
   else bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
   toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
@@ -1751,7 +1776,12 @@ function pointerUp(event) {
   const pointer = state.activePointers.get(event.pointerId);
   if (!pointer) return;
   state.activePointers.delete(event.pointerId);
-  pointer.settleRemaining = 340;
+  const structuralDrop = state.slimeType === 'cloud3d' || state.slimeType === 'putty';
+  const lag = Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY);
+  pointer.settleRemaining = structuralDrop
+    ? clamp(lag / SLIME_MAX_STEP_PER_FRAME * 16.6667 + 180, 420, 1800)
+    : 340;
+  pointer.releaseEngineGrab = structuralDrop;
   state.settlingPointers.push(pointer);
   audio.release(pointer.speed);
   haptic([13, 20, 18], 1.28);
@@ -1766,9 +1796,13 @@ function handleCanvasKey(event) {
     event.preventDefault();
     const [dx, dy] = directions[event.key];
     if (state.slimeType === 'liquidy') localFluidSplat(centerX, centerY, dx, dy, themes[state.theme].dyePalette[0], 0);
-    else if (state.slimeType === 'cloud3d') cloudSlime?.touch(centerX, centerY, dx, dy);
-    else if (state.slimeType === 'putty') puttySlime?.touch(centerX, centerY, dx, dy);
-    else if (state.slimeType === 'wax') waxSlime?.touch(centerX, centerY, dx, dy);
+    else if (state.slimeType === 'cloud3d') {
+      cloudSlime?.touch(centerX, centerY, dx, dy, 'keyboard', true);
+      cloudSlime?.release('keyboard');
+    } else if (state.slimeType === 'putty') {
+      puttySlime?.touch(centerX, centerY, dx, dy, 'keyboard', true);
+      puttySlime?.release('keyboard');
+    } else if (state.slimeType === 'wax') waxSlime?.touch(centerX, centerY, dx, dy);
     else bingsuSlime?.touch(centerX, centerY, dx, dy);
     toppings.stir(centerX, centerY, dx, dy, 0.7);
     audio.wetDrag(24, 1);
@@ -1817,6 +1851,7 @@ function updatePointerPhysics(dt) {
     const offsetY = pointer.y - pointer.slimeY;
     const lag = Math.hypot(offsetX, offsetY);
     if (isActive) totalLag += lag;
+    if (isActive && state.slimeType === 'wax') waxSlime?.press(pointer.slimeX, pointer.slimeY, dt, pointer.speed);
     if (lag < 0.08) return;
 
     let moveX = offsetX * followAmount;
@@ -1831,16 +1866,21 @@ function updatePointerPhysics(dt) {
     pointer.slimeX += moveX;
     pointer.slimeY += moveY;
     pointer.moveCount += 1;
-    if (pointer.moveCount % 36 === 0) {
-      const palette = themes[state.theme].dyePalette;
+    const colorChangeCadence = state.slimeType === 'liquidy' ? 18 : 36;
+    if (pointer.moveCount % colorChangeCadence === 0) {
+      const palette = state.slimeType === 'liquidy'
+        ? (LIQUID_CONTRAST_PALETTES[state.theme] || themes[state.theme].dyePalette)
+        : themes[state.theme].dyePalette;
       pointer.colorIndex = (pointer.colorIndex + 1) % palette.length;
       pointer.color = palette[pointer.colorIndex];
     }
 
-    const ribbonIntensity = pointer.moveCount % 12 === 0 ? 0.032 : 0;
+    const ribbonIntensity = state.slimeType === 'liquidy'
+      ? (pointer.moveCount % 5 === 0 ? 0.06 : 0)
+      : (pointer.moveCount % 12 === 0 ? 0.032 : 0);
     if (state.slimeType === 'liquidy') localFluidSplat(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.color, ribbonIntensity, 6);
-    else if (state.slimeType === 'cloud3d') cloudSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
-    else if (state.slimeType === 'putty') puttySlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
+    else if (state.slimeType === 'cloud3d') cloudSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.id);
+    else if (state.slimeType === 'putty') puttySlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.id);
     else if (state.slimeType === 'wax') waxSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
     else bingsuSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
     toppings.stir(pointer.slimeX, pointer.slimeY, moveX, moveY, 0.48 + Math.max(1, touchCount) * 0.07);
@@ -1849,7 +1889,12 @@ function updatePointerPhysics(dt) {
 
   state.settlingPointers = state.settlingPointers.filter((pointer) => {
     pointer.settleRemaining -= dt;
-    return pointer.settleRemaining > 0 && Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY) > 0.35;
+    const keepSettling = pointer.settleRemaining > 0 && Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY) > 0.35;
+    if (!keepSettling && pointer.releaseEngineGrab) {
+      cloudSlime?.release?.(pointer.id);
+      puttySlime?.release?.(pointer.id);
+    }
+    return keepSettling;
   });
   state.averagePointerLag = touchCount ? totalLag / touchCount : 0;
   if (touchCount) {
@@ -1920,8 +1965,10 @@ function setStep(step, { feedback = true } = {}) {
   stepCount.textContent = `STEP ${stepIndex + 1} OF ${stepOrder.length}`;
   stepName.textContent = stepDetails[step].name;
   previousStepButton.disabled = stepIndex === 0;
-  nextStepButton.disabled = stepIndex === stepOrder.length - 1;
-  nextStepLabel.textContent = step === 'type' ? 'COLORS' : step === 'base' ? 'MIX-INS' : step === 'mix' ? 'SQUISH' : 'DONE';
+  const waitingForType = step === 'type' && !state.typeChosen;
+  nextStepButton.hidden = waitingForType || stepIndex === stepOrder.length - 1;
+  nextStepButton.disabled = waitingForType || stepIndex === stepOrder.length - 1;
+  nextStepLabel.textContent = step === 'type' ? 'COLORS' : step === 'base' ? 'MIX-INS' : step === 'mix' ? 'FILL SCREEN' : 'DONE';
   previousStepButton.setAttribute('aria-label', stepIndex === 0 ? 'No previous step' : `Back to ${stepDetails[stepOrder[stepIndex - 1]].shortName}`);
   nextStepButton.setAttribute('aria-label', stepIndex === stepOrder.length - 1 ? 'All steps complete' : `Next step: ${stepDetails[stepOrder[stepIndex + 1]].shortName}`);
   if (feedback) {
@@ -1932,6 +1979,10 @@ function setStep(step, { feedback = true } = {}) {
 }
 
 function moveStep(direction) {
+  if (direction > 0 && state.step === 'mix') {
+    enterPlayMode();
+    return;
+  }
   const nextIndex = clamp(stepOrder.indexOf(state.step) + direction, 0, stepOrder.length - 1);
   if (stepOrder[nextIndex] !== state.step) setStep(stepOrder[nextIndex]);
 }
@@ -1975,7 +2026,7 @@ function enterPlayMode() {
   window.setTimeout(() => {
     resetViewportOrigin();
     resizeToppings();
-    if (state.slimeType !== 'wax' && state.slimeType !== 'bingsu') initFluid({ replace: true, seedDelay: 90 });
+    if (state.slimeType === 'liquidy') initFluid({ replace: true, seedDelay: 90 });
     toppings.syncMixins();
     showHint('Draw slow circles to fold the colors!', 2200);
   }, 470);
@@ -1997,13 +2048,18 @@ function exitPlayMode() {
   haptic(7);
   window.setTimeout(() => {
     resizeToppings();
-    if (state.slimeType !== 'wax' && state.slimeType !== 'bingsu') initFluid({ replace: true, seedDelay: 90 });
+    if (state.slimeType === 'liquidy') initFluid({ replace: true, seedDelay: 90 });
   }, 470);
 }
 
 function goHome() {
   if (state.playMode) exitPlayMode();
   state.started = false;
+  state.typeChosen = false;
+  document.querySelectorAll('.type-choice').forEach((choice) => {
+    choice.classList.remove('selected');
+    choice.setAttribute('aria-pressed', 'false');
+  });
   clearMixins();
   setStep('type', { feedback: false });
   welcomeCard.classList.remove('hidden');
@@ -2032,7 +2088,6 @@ makerPanel.addEventListener('click', () => {
 }, { capture: true });
 previousStepButton.addEventListener('click', () => moveStep(-1));
 nextStepButton.addEventListener('click', () => moveStep(1));
-document.querySelector('#squishButton').addEventListener('click', enterPlayMode);
 document.querySelector('#homeButton').addEventListener('click', goHome);
 exitPlayButton.addEventListener('click', exitPlayMode);
 resetButton.addEventListener('click', resetSlime);
@@ -2051,11 +2106,12 @@ soundButton.addEventListener('click', () => {
 });
 
 document.querySelectorAll('.type-choice').forEach((button) => {
-  const selected = button.dataset.slimeType === state.slimeType;
+  const selected = state.typeChosen && button.dataset.slimeType === state.slimeType;
   button.classList.toggle('selected', selected);
   button.setAttribute('aria-pressed', String(selected));
   button.addEventListener('click', () => {
     state.slimeType = button.dataset.slimeType;
+    state.typeChosen = true;
     document.querySelectorAll('.type-choice').forEach((choice) => {
       const isSelected = choice === button;
       choice.classList.toggle('selected', isSelected);
@@ -2076,10 +2132,8 @@ document.querySelectorAll('.type-choice').forEach((button) => {
       bingsu: 'Bingsu Crunch',
       putty: 'Stretchy Putty',
     };
-    showHint(`${names[state.slimeType]}! Now pick colors`, 900);
-    window.setTimeout(() => {
-      if (state.step === 'type' && state.slimeType === button.dataset.slimeType) setStep('base');
-    }, 260);
+    setStep('type', { feedback: false });
+    showHint(`${names[state.slimeType]}! Tap the arrow for colors`, 1200);
   });
 });
 
@@ -2121,7 +2175,7 @@ document.querySelectorAll('.mix-choice').forEach((button) => {
     const batch = toppings.addBatch(mix);
     toppings.burst(mix, batch);
     splashMix(mix);
-    audio.sparkle();
+    audio.sparkle(mix);
     haptic([4, 16, 4, 16, 7]);
     showHint(`${MIX_LABELS[mix]} · ${nextCount} of ${MAX_MIX_BATCHES}!`, 1100);
     saveRecipe();
@@ -2138,6 +2192,7 @@ document.addEventListener('visibilitychange', () => {
 
 new ResizeObserver(resizeToppings).observe(playground);
 window.addEventListener('resize', resizeToppings);
+setStep('type', { feedback: false });
 resizeToppings();
 toppings.syncMixins();
 initFluid();
@@ -2151,9 +2206,9 @@ window.render_game_to_text = () => JSON.stringify({
     engine: !state.webglAvailable ? 'animated gradient fallback' : ({
       liquidy: 'WebGL Fluid Enhanced Eulerian solver',
       cloud3d: 'Three.js Marching Cubes closed volumetric metaball surface with physical lighting',
-      wax: 'Canvas2D persistent brittle-shell fracture over a thick slime field',
+      wax: 'OGL WebGL persistent 3D plate fracture over a volumetric slime bed',
       bingsu: 'Canvas2D damped structural tube-bead field in translucent thick slime',
-      putty: 'Matter.js constrained soft-body spring lattice',
+      putty: 'Three.js Catmull-Rom TubeGeometry with two independently grabbable 3D ends',
     })[state.slimeType],
     coverage: 'full-stage',
     stage: { width: Math.round(state.toppingWidth), height: Math.round(state.toppingHeight) },
@@ -2164,9 +2219,16 @@ window.render_game_to_text = () => JSON.stringify({
     motionProfile: 'extra thick: 315ms touch lag, broad low-force impulses, very strong velocity damping, low curl',
     activeTouches: state.activePointers.size,
     settlingDrags: state.settlingPointers.length,
+    liquidContrastSmooshes: state.liquidClickCount,
+  },
+  navigation: {
+    typeChosen: state.typeChosen,
+    nextArrowVisible: !nextStepButton.hidden,
+    finalArrowAction: 'fill the screen',
   },
   toppings: {
     total: toppings.particles.length,
+    anchoredToMaterial: toppings.particles.filter((particle) => particle.anchorKind === 'cloud' || particle.anchorKind === 'putty').length,
     visibleMixins: MIX_TYPES.filter((type) => (state.mixins.get(type) || 0) > 0).map((type) => ({
       type,
       batches: state.mixins.get(type),
@@ -2174,32 +2236,49 @@ window.render_game_to_text = () => JSON.stringify({
     })),
   },
   structuralTexture: state.slimeType === 'cloud3d' ? {
-    kind: 'stable volumetric snow-slime folds',
+    kind: 'persistent grabbable and stackable volumetric snow-slime chunks',
     geometryRebuilds: cloudSlime?.rebuildCount || 0,
     activeFolds: cloudSlime?.touchFolds.length || 0,
+    stack: cloudSlime?.stackMetrics || null,
     rebuildCadence: isMobile ? 'fixed 25fps while deforming; frozen while idle' : 'fixed 30fps while deforming; frozen while idle',
   } : state.slimeType === 'wax' ? {
-    kind: 'hardened wax shell',
+    kind: 'OGL 3D hardened wax shell plates',
     fractureBursts: waxSlime?.fractureBursts || 0,
-    crackSegments: waxSlime?.cracks.length || 0,
+    brokenPlateCount: waxSlime?.brokenPlateCount || 0,
+    accumulatedPressEffort: Number((waxSlime?.totalEffort || 0).toFixed(2)),
+    currentCrackProgress: Number((waxSlime?.pressProgress || 0).toFixed(2)),
     shellIntegrity: waxSlime?.shellIntegrity ?? 1,
   } : state.slimeType === 'bingsu' ? {
-    kind: 'intrinsic iridescent tube beads',
+    kind: 'intrinsic iridescent tube beads with moving persistent dye flow',
     beadCount: bingsuSlime?.beads.length || 0,
     compression: Number((bingsuSlime?.compression || 0).toFixed(2)),
+    dyeTrails: bingsuSlime?.dyeTrails.length || 0,
+    flowOffset: {
+      x: Number((bingsuSlime?.flowX || 0).toFixed(1)),
+      y: Number((bingsuSlime?.flowY || 0).toFixed(1)),
+      twist: Number((bingsuSlime?.flowTwist || 0).toFixed(2)),
+    },
+  } : state.slimeType === 'putty' ? {
+    kind: 'two-ended 3D stretchy putty tube',
+    ...(puttySlime?.metrics || {}),
   } : null,
   sound: state.muted ? 'off' : 'on',
   soundProfile: state.slimeType === 'wax'
-    ? 'one-time brittle wax snap, persistent dry crackles, soft slime underneath'
+    ? 'slow dry shell rubbing, sparse earned brittle snaps, soft slime underneath'
     : state.slimeType === 'bingsu'
       ? 'dense randomized plastic crunch grains, wet thick squish, occasional trapped-air pops'
-      : 'soft wet squelch, airy foam crackle, irregular crunchy mush',
+      : state.slimeType === 'putty'
+        ? 'deep tacky pulls, low suction, soft rubbery foam texture'
+        : state.slimeType === 'cloud3d'
+          ? 'deep mushy squelch, low suction, airy irregular foam crackle'
+          : 'layered wet squelch, low suction, irregular soft foam texture',
   cloudSlimeTextureBursts: audio.textureBurstCount,
   mushBursts: audio.mushBurstCount,
   foamCrunchBursts: audio.foamCrunchCount,
   waxCrackleGrains: audio.waxCrackleCount,
   bingsuCrunchGrains: audio.bingsuCrunchCount,
   trappedAirPops: audio.airPopCount,
+  shinySparkleNotes: audio.shinySparkleCount,
   hapticsAvailable: 'vibrate' in navigator,
   hapticCues: state.hapticCueCount,
   textureHapticPulses: state.textureHapticCount,

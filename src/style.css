@@ -126,7 +126,9 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .fluid-stage.wax-mode .surface-grain,
 .fluid-stage.wax-mode .slime-glaze,
 .fluid-stage.bingsu-mode .surface-grain,
-.fluid-stage.bingsu-mode .slime-glaze { opacity: 0; }
+.fluid-stage.bingsu-mode .slime-glaze,
+.fluid-stage.putty-mode .surface-grain,
+.fluid-stage.putty-mode .slime-glaze { opacity: 0; }
 .fluid-stage.fluid-fallback {
   background:
     radial-gradient(circle at 22% 35%, #ff78c7 0 8%, transparent 30%),
@@ -213,6 +215,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 
 .step-navigation { display: grid; grid-template-columns: minmax(70px, 1fr) minmax(120px, 1.5fr) minmax(70px, 1fr); align-items: center; gap: 7px; max-width: 540px; margin: -22px auto 7px; padding: 5px; border-radius: 21px; background: #fff; box-shadow: 0 7px 24px rgba(51,28,68,.13); }
 .step-arrow { min-height: 48px; border: 0; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 3px 8px; color: #fff; background: linear-gradient(135deg, #7b38f3, #ad4cff); box-shadow: 0 4px 0 #5824b6; font-size: 9px; letter-spacing: .7px; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .18s ease; }
+.step-arrow[hidden] { display: none; }
 .step-arrow .arrow-glyph { font-size: 27px; line-height: .8; margin-top: -2px; }
 .step-arrow:active:not(:disabled) { transform: translateY(3px) scale(.96); box-shadow: 0 1px 0 #5824b6; }
 .step-arrow:disabled { opacity: .25; cursor: default; box-shadow: none; }
@@ -285,13 +288,6 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   .type-choice-row { justify-content: center; }
 }
 
-.squish-panel.active { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 5px 12px; }
-.squish-panel > div { display: flex; flex-direction: column; min-width: 0; }
-.squish-panel .ready-kicker { margin: 0 0 3px; color: #8c3ff2; font-size: 9px; letter-spacing: 1.3px; }
-.squish-panel strong { font-size: 17px; }
-.squish-panel span:not(.primary-button span) { font: 11px system-ui, sans-serif; color: #817488; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.squish-button { flex: 0 0 auto; min-height: 52px; }
-
 .exit-play {
   position: absolute;
   z-index: 10;
@@ -313,10 +309,6 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 }
 .play-mode .exit-play { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 .play-mode .hint-bubble { top: 56px; }
-.play-callout { position: absolute; z-index: 4; inset: auto 18px 22px; display: flex; justify-content: space-between; pointer-events: none; opacity: 0; transition: opacity .4s .25s ease; }
-.play-callout span { color: rgba(255,255,255,.68); font-size: 10px; letter-spacing: 1.8px; text-shadow: 0 1px 5px rgba(30,0,50,.45); }
-.play-mode .play-callout { opacity: 1; }
-
 .app-shell.full-slime { grid-template-rows: 0 minmax(0, 1fr) 0; }
 .app-shell.full-slime .topbar { transform: translateY(-100%); visibility: hidden; }
 .app-shell.full-slime .maker-panel { visibility: hidden; }

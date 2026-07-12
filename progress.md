@@ -37,6 +37,14 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Deterministic Bingsu QA confirmed 220 intrinsic tube beads on mobile and 320 on desktop, all optional mix-ins at 0/5, dense repeated crunch grains plus trapped-air pops, visible compression dimples, and no browser errors.
 - Cloud idle QA held `geometryRebuilds` at exactly 1 across repeated captures with zero active folds, proving the former idle remesh jitter is gone; maker and full-screen captures now overscan the canvas instead of leaving table bands.
 - Wax cracks and Bingsu bead positions now survive the transition into and back out of full-screen play; only reset or type re-entry creates a fresh shell/texture.
+- Reworked the child navigation so no slime type is preselected, the forward arrow is completely hidden until a type is tapped, choosing a type stays on the type page, and the final `FILL SCREEN` arrow launches play directly without an extra ready menu or bottom instruction words.
+- Made Liquidy Swirl react on the very first press with a restrained high-contrast color smoosh, faster contrast-color ribbon changes, and no additive white blowout; Bingsu now carries persistent dye trails and shifts its wide background ribbons while touched.
+- Turned Cloud Slime into a persistent grab/drop material: chunks keep their dropped positions, compact together on release, build extra height as they overlap, preserve their layout through full-screen transitions, and dynamically change from full-canvas coverage into a round central 3D mound.
+- Replaced the old putty lattice with a Three.js Catmull-Rom `TubeGeometry` strand with rounded 3D ends. Two simultaneous touch pointers independently grab the two ends, stretch them to a measured 1.48x span, and leave them at their dropped positions.
+- Replaced the Canvas2D wax effect with an independent OGL/WebGL 3D shell. Pressure now accumulates for about two seconds before sparse plates yield one at a time; damaged plates depress first, then tilt and sink slowly instead of exploding away.
+- Anchored every user-added topping to Cloud chunks or the live Putty tube curve so toppings move with the 3D material. Verified a 46-piece sprinkle batch stayed attached after Cloud stacking and Putty endpoint dragging.
+- Upgraded procedural sound with mode-specific low suction, deep mush, airy foam, tacky putty pulls, earned wax snaps, a dynamics compressor, and a new five-note shiny sprinkle glint.
+- Latest QA: initial Wax press produced 0 breaks at 12% damage, a sustained hold produced only 2/120 broken shell plates; Cloud compacted from 0.36 to 0.09 spread radius with 24+ stacked blobs; Bingsu reported persistent moving dye flow; all five engines built and ran with zero browser console errors.
 
 ## Complete
 
