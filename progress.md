@@ -71,6 +71,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Replaced Glowy's slosh with the supplied Ginsu Crunchy Slime #1 and #4 MP3s, alternating the loop on each new press interaction. Trimmed the supplied Soft Discovery Tone MP3 to exactly its first second and play it only when a slime type is selected.
 - Replaced the one-second sampled type-selection cue with the app's short four-note bright sparkle confirmation. Type selection stays separate from slime interaction loops and does not start them.
 - Renamed Puffy to `Puffy-Pop`. Each 3D puff now tracks three discrete presses, squashes, briefly over-inflates, and collapses away on the third; after all 40–42 puffs are gone, the bed pauses and then reinflates sequentially in a slow reload cycle. Added a dedicated procedural placeholder pop cue for completed pops.
+- Anchored user toppings to individual active Puffy-Pop spheres. They follow the host puff while it squashes, are removed immediately when that puff enters its pop animation, never attach to gone/reloading puffs, and stay removed across color or topping-page revisits until the topping is cleared or the slime is reset.
 
 ## Complete
 

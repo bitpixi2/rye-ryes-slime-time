@@ -511,6 +511,8 @@ class ToppingLayer {
     this.particles = [];
     this.palette = themes[state.theme].palette;
     this.anchoredRedistributions = 0;
+    this.removedWithPuffs = 0;
+    this.removedWithPuffByType = new Map();
     this.spawnBaseTexture();
   }
 
@@ -558,7 +560,9 @@ class ToppingLayer {
     const baseTexture = this.particles.filter((particle) => particle.type === 'bubble');
     const syncedParticles = [...baseTexture];
     for (const type of MIX_TYPES) {
-      const desired = this.countFor(type) * (state.mixins.get(type) || 0);
+      const batches = state.mixins.get(type) || 0;
+      if (batches === 0) this.removedWithPuffByType.delete(type);
+      const desired = Math.max(0, this.countFor(type) * batches - (this.removedWithPuffByType.get(type) || 0));
       const existing = this.particles.filter((particle) => particle.type === type).slice(0, desired);
       syncedParticles.push(...existing);
       for (let index = existing.length; index < desired; index += 1) syncedParticles.push(this.makeParticle(type));
@@ -577,6 +581,26 @@ class ToppingLayer {
     for (let index = 0; index < this.countFor(type); index += 1) batch.push(this.makeParticle(type));
     this.particles.push(...batch);
     return batch;
+  }
+
+  removePuffParticles(particles) {
+    const removable = particles.filter((particle) => particle.type !== 'bubble');
+    if (!removable.length) return 0;
+    const removalSet = new Set(removable);
+    removable.forEach((particle) => {
+      this.removedWithPuffs += 1;
+      this.removedWithPuffByType.set(particle.type, (this.removedWithPuffByType.get(particle.type) || 0) + 1);
+    });
+    this.particles = this.particles.filter((particle) => !removalSet.has(particle));
+    return removable.length;
+  }
+
+  removeForPuff(anchorIndex) {
+    const removed = this.removePuffParticles(this.particles.filter((particle) => (
+      particle.anchorKind === 'puffy' && particle.anchorIndex === anchorIndex
+    )));
+    if (removed) this.render();
+    return removed;
   }
 
   stir(x, y, dx, dy, force = 1) {
@@ -641,6 +665,26 @@ class ToppingLayer {
   }
 
   burst(type, particles = this.particles.filter((item) => item.type === type)) {
+    if (state.slimeType === 'bingsu') {
+      const cells = bingsuSlime?.activeCellIndices || [];
+      if (!cells.length) {
+        this.removePuffParticles(particles);
+        return;
+      }
+      const start = Math.floor(Math.random() * cells.length);
+      particles.forEach((particle, index) => {
+        const anchorIndex = cells[(start + index * 11) % cells.length];
+        const surface = bingsuSlime.surfacePoint(anchorIndex);
+        if (!surface) return;
+        const angle = index * 2.39996;
+        const radius = randomBetween(0.006, 0.032);
+        particle.x = surface.x + Math.cos(angle) * radius;
+        particle.y = surface.y + Math.sin(angle) * radius;
+        particle.preferredPuffIndex = anchorIndex;
+      });
+      this.attachToMaterial(particles);
+      return;
+    }
     if (state.slimeType === 'cloud3d' && cloudSlime?.blobs?.length) {
       const start = Math.floor(Math.random() * cloudSlime.blobs.length);
       particles.forEach((particle, index) => {
@@ -688,10 +732,44 @@ class ToppingLayer {
     delete particle.anchorT;
     delete particle.anchorSide;
     delete particle.anchorAngle;
+    delete particle.preferredPuffIndex;
+    delete particle.removeWithPuff;
   }
 
   attachToMaterial(particles = this.particles) {
     const attachable = particles.filter((particle) => particle.type !== 'bubble');
+    if (state.slimeType === 'bingsu') {
+      const activeCells = bingsuSlime?.activeCellIndices || [];
+      if (!activeCells.length) {
+        this.removePuffParticles(attachable);
+        return;
+      }
+      attachable.forEach((particle) => {
+        const preferred = Number.isInteger(particle.preferredPuffIndex) && activeCells.includes(particle.preferredPuffIndex)
+          ? particle.preferredPuffIndex
+          : null;
+        const nearest = preferred ?? activeCells
+          .map((index) => ({ index, surface: bingsuSlime.surfacePoint(index) }))
+          .filter(({ surface }) => surface)
+          .sort((first, second) => (
+            Math.hypot(particle.x - first.surface.x, particle.y - first.surface.y)
+            - Math.hypot(particle.x - second.surface.x, particle.y - second.surface.y)
+          ))[0]?.index;
+        const surface = bingsuSlime.surfacePoint(nearest);
+        if (!surface) {
+          this.clearAnchor(particle);
+          return;
+        }
+        particle.anchorKind = 'puffy';
+        particle.anchorIndex = nearest;
+        particle.anchorOffsetX = clamp(particle.x - surface.x, -0.04, 0.04);
+        particle.anchorOffsetY = clamp(particle.y - surface.y, -0.035, 0.035);
+        particle.vx = 0;
+        particle.vy = 0;
+        delete particle.preferredPuffIndex;
+      });
+      return;
+    }
     if (state.slimeType === 'cloud3d' && cloudSlime?.blobs?.length) {
       attachable.forEach((particle) => {
         const nearest = cloudSlime.blobs
@@ -765,8 +843,14 @@ class ToppingLayer {
     const puttyAmounts = decorated
       .filter((particle) => particle.anchorKind === 'putty')
       .map((particle) => particle.anchorT);
+    const puffyAnchorCounts = decorated
+      .filter((particle) => particle.anchorKind === 'puffy')
+      .reduce((counts, particle) => counts.set(particle.anchorIndex, (counts.get(particle.anchorIndex) || 0) + 1), new Map());
     return {
       cloudAnchorsUsed: cloudAnchors.size,
+      puffyAnchorsUsed: new Set(decorated.filter((particle) => particle.anchorKind === 'puffy').map((particle) => particle.anchorIndex)).size,
+      puffyAnchors: [...puffyAnchorCounts].map(([index, count]) => ({ index, count, ...bingsuSlime?.surfacePoint?.(index) })),
+      removedWithPuffs: this.removedWithPuffs,
       puttySpan: puttyAmounts.length
         ? Number((Math.max(...puttyAmounts) - Math.min(...puttyAmounts)).toFixed(3))
         : 0,
@@ -775,6 +859,19 @@ class ToppingLayer {
   }
 
   updateAnchor(particle, frame) {
+    if (particle.anchorKind === 'puffy' && state.slimeType === 'bingsu' && bingsuSlime?.surfacePoint) {
+      const surface = bingsuSlime.surfacePoint(particle.anchorIndex);
+      if (!surface || surface.state !== 'active') {
+        particle.removeWithPuff = true;
+        return true;
+      }
+      const follow = 1 - 0.12 ** frame;
+      particle.x += (surface.x + particle.anchorOffsetX - particle.x) * follow;
+      particle.y += (surface.y + particle.anchorOffsetY - particle.y) * follow;
+      particle.vx = 0;
+      particle.vy = 0;
+      return true;
+    }
     if (particle.anchorKind === 'cloud' && state.slimeType === 'cloud3d' && cloudSlime?.blobs?.[particle.anchorIndex]) {
       const blob = cloudSlime.blobs[particle.anchorIndex];
       const targetX = blob.x + particle.anchorOffsetX;
@@ -822,6 +919,8 @@ class ToppingLayer {
       if (particle.y < -0.03) particle.y = 1.03;
       if (particle.y > 1.03) particle.y = -0.03;
     }
+    const removed = this.particles.filter((particle) => particle.removeWithPuff);
+    if (removed.length) this.removePuffParticles(removed);
   }
 
   drawStar(context, radius) {
@@ -2119,6 +2218,7 @@ function pointerDown(event) {
   else {
     const popResult = bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4, true);
     if (popResult?.popped) {
+      toppings.removeForPuff(popResult.index);
       audio.pop();
       haptic([18, 22, 32], 1.45);
     }
@@ -2692,7 +2792,7 @@ window.render_game_to_text = () => JSON.stringify({
   },
   toppings: {
     total: toppings.particles.length,
-    anchoredToMaterial: toppings.particles.filter((particle) => particle.anchorKind === 'cloud' || particle.anchorKind === 'putty').length,
+    anchoredToMaterial: toppings.particles.filter((particle) => ['cloud', 'puffy', 'putty'].includes(particle.anchorKind)).length,
     distribution: toppings.distributionMetrics,
     visibleMixins: MIX_TYPES.filter((type) => (state.mixins.get(type) || 0) > 0).map((type) => ({
       type,

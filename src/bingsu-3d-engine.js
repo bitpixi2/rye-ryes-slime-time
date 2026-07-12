@@ -24,6 +24,9 @@ export class BingsuSlime3DEngine {
     this.disposed = false;
     this.dummy = new THREE.Object3D();
     this.colorScratch = new THREE.Color();
+    this.surfaceCache = [];
+    this.restSurfaceCache = [];
+    this.projectScratch = new THREE.Vector3();
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.isMobile, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, this.isMobile ? 1.15 : 1.5));
@@ -137,6 +140,25 @@ export class BingsuSlime3DEngine {
     return { x: (cell.nx - 0.5) * width, y: (0.5 - cell.ny) * 6.7, sx: width / this.columns * 0.72, sy: 6.7 / this.rows * 0.76 };
   }
 
+  get activeCellIndices() {
+    return this.cells
+      .map((cell, index) => ({ cell, index }))
+      .filter(({ cell }) => cell.state === 'active')
+      .map(({ index }) => index);
+  }
+
+  surfacePoint(index) {
+    const cell = this.cells[index];
+    const point = this.surfaceCache[index];
+    if (!cell || !point) return null;
+    return {
+      x: point.x,
+      y: point.y,
+      state: cell.state,
+      visibleScale: cell.visibleScale,
+    };
+  }
+
   touch(x, y, dx = 0, dy = 0, isStart = false) {
     const nx = clamp(x / this.width, 0, 1);
     const ny = clamp(y / this.height, 0, 1);
@@ -144,8 +166,10 @@ export class BingsuSlime3DEngine {
     this.flowY = clamp(this.flowY + dy * 0.7, -this.height * 0.35, this.height * 0.35);
     this.flowTwist = clamp(this.flowTwist + (dx / this.width - dy / this.height) * 3, -1.4, 1.4);
     let compressed = 0;
-    this.cells.forEach((cell) => {
-      const distance = Math.hypot(cell.nx - nx, cell.ny - ny);
+    this.cells.forEach((cell, index) => {
+      const surface = this.surfacePoint(index);
+      if (!surface || surface.state === 'gone') return;
+      const distance = Math.hypot(surface.x - nx, surface.y - ny);
       if (distance > 0.2) return;
       const influence = (1 - distance / 0.2) ** 2;
       cell.targetCompression = Math.max(cell.targetCompression, 0.98 * influence);
@@ -157,7 +181,13 @@ export class BingsuSlime3DEngine {
     if (!isStart) return null;
 
     const target = this.cells
-      .map((cell, index) => ({ cell, index, distance: Math.hypot(cell.nx - nx, cell.ny - ny) }))
+      .map((cell, index) => {
+        const surface = this.surfacePoint(index);
+        const rest = this.restSurfaceCache[index];
+        const liveDistance = surface ? Math.hypot(surface.x - nx, surface.y - ny) : Infinity;
+        const restDistance = rest ? Math.hypot(rest.x - nx, rest.y - ny) : Infinity;
+        return { cell, index, distance: Math.min(liveDistance, restDistance) };
+      })
       .filter(({ cell }) => cell.state === 'active')
       .sort((first, second) => first.distance - second.distance)[0];
     if (!target || target.distance > 0.22) return null;
@@ -188,6 +218,17 @@ export class BingsuSlime3DEngine {
         world.sy * 0.88 * (1 + cell.compression * 0.08) * cell.visibleScale,
         height * cell.visibleScale,
       );
+    });
+    this.camera.updateMatrixWorld();
+    this.surfaceCache = this.cellMeshes.map((mesh) => {
+      this.projectScratch.set(mesh.position.x, mesh.position.y, mesh.position.z + mesh.scale.z * 0.7).project(this.camera);
+      return { x: (this.projectScratch.x + 1) * 0.5, y: (1 - this.projectScratch.y) * 0.5 };
+    });
+    this.surfaceCache.forEach((surface, index) => {
+      const cell = this.cells[index];
+      if (!this.restSurfaceCache[index] || (cell.state === 'active' && cell.hitCount === 0 && cell.compression < 0.02)) {
+        this.restSurfaceCache[index] = { ...surface };
+      }
     });
     this.beads.forEach((bead, index) => {
       const cell = this.cells[bead.cellIndex];
