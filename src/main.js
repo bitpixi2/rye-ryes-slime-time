@@ -149,6 +149,7 @@ class SlimeAudio {
     this.waxCrackleCount = 0;
     this.bingsuCrunchCount = 0;
     this.airPopCount = 0;
+    this.placeholderPopCount = 0;
     this.shinySparkleCount = 0;
     this.lastCrunchSound = { wax: 0, bingsu: 0 };
     this.interactionEffectsEnabled = false;
@@ -471,6 +472,36 @@ class SlimeAudio {
     });
     this.shinySparkleCount += notes.length;
     this.foamCrunchCount += notes.length;
+  }
+
+  pop() {
+    this.init();
+    if (!this.context || state.muted) return false;
+    const now = this.context.currentTime;
+    const bubble = this.context.createOscillator();
+    const bubbleGain = this.context.createGain();
+    const snap = this.context.createBufferSource();
+    const snapFilter = this.context.createBiquadFilter();
+    const snapGain = this.context.createGain();
+    bubble.type = 'sine';
+    bubble.frequency.setValueAtTime(210, now);
+    bubble.frequency.exponentialRampToValueAtTime(72, now + 0.12);
+    bubbleGain.gain.setValueAtTime(0.055, now);
+    bubbleGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+    snap.buffer = this.foamBuffer;
+    snap.playbackRate.value = 2.4;
+    snapFilter.type = 'highpass';
+    snapFilter.frequency.value = 1250;
+    snapGain.gain.setValueAtTime(0.024, now);
+    snapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+    bubble.connect(bubbleGain).connect(this.master);
+    snap.connect(snapFilter).connect(snapGain).connect(this.master);
+    bubble.start(now);
+    snap.start(now);
+    bubble.stop(now + 0.15);
+    snap.stop(now + 0.065);
+    this.placeholderPopCount += 1;
+    return true;
   }
 }
 
@@ -2085,7 +2116,13 @@ function pointerDown(event) {
   }
   else if (state.slimeType === 'cloud3d') cloudSlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
   else if (state.slimeType === 'putty') puttySlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
-  else bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
+  else {
+    const popResult = bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4, true);
+    if (popResult?.popped) {
+      audio.pop();
+      haptic([18, 22, 32], 1.45);
+    }
+  }
   toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
   if (state.slimeType === 'bingsu') {
     audio.squelch(0.48 + state.activePointers.size * 0.1, 0.9);
@@ -2517,7 +2554,7 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     });
     initFluid({ replace: true, seedDelay: 100 });
     sampleLoops.selectMode(state.slimeType);
-    sampleLoops.playDiscovery(0.8);
+    audio.sparkle('type-select');
     const previewPitch = state.slimeType === 'cloud3d' ? 0.72
       : state.slimeType === 'putty' ? 0.88
         : state.slimeType === 'bingsu' ? 1.05
@@ -2527,7 +2564,7 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     const names = {
       liquidy: 'Glowy',
       cloud3d: 'Blobby',
-      bingsu: 'Puffy',
+      bingsu: 'Puffy-Pop',
       putty: 'Stretchy',
     };
     setStep('type', { feedback: false });
@@ -2675,6 +2712,7 @@ window.render_game_to_text = () => JSON.stringify({
     heightLevels: bingsuSlime?.levelCount || 0,
     beadCount: bingsuSlime?.beads.length || 0,
     compression: Number((bingsuSlime?.compression || 0).toFixed(2)),
+    pops: bingsuSlime?.popMetrics || null,
     dyeTrails: bingsuSlime?.dyeTrails.length || 0,
     trailPersistence: 'permanent until reset or a new slime is chosen',
     flowOffset: {
@@ -2701,6 +2739,7 @@ window.render_game_to_text = () => JSON.stringify({
   foamCrunchBursts: audio.foamCrunchCount,
   bingsuCrunchGrains: audio.bingsuCrunchCount,
   trappedAirPops: audio.airPopCount,
+  placeholderPopSounds: audio.placeholderPopCount,
   shinySparkleNotes: audio.shinySparkleCount,
   hapticsAvailable: 'vibrate' in navigator,
   hapticCues: state.hapticCueCount,

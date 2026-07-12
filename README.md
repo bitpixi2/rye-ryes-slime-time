@@ -11,7 +11,7 @@ Rye-Rye’s Slime Time is a playful, touch-first slime table for kids. Choose a 
 ```mermaid
 flowchart TB
     UI["Categories"] --> Type["1 · Choose a type<br/>Four rendering engines"]
-    Type --> Engines["Glowy · WebGL fluid<br/>Blobby · Three.js volume<br/>Puffy · Three.js layered puffs<br/>Stretchy · Three.js geometry"]
+    Type --> Engines["Glowy · WebGL fluid<br/>Blobby · Three.js volume<br/>Puffy-Pop · Three.js popping puffs<br/>Stretchy · Three.js geometry"]
     Engines --> Color["2 · Choose a color<br/>Shared slime palettes"]
     Color --> Toppings["3 · Add toppings<br/>Canvas asset layer"]
     Toppings --> Stage["4 · Fill the screen<br/>Slime, ElevenLabs sounds and haptics"]
@@ -42,7 +42,7 @@ Slime turns texture, repetition, and transformation into open-ended play. For so
     <td width="50%"><img src="docs/slime-gallery-blobby.png" alt="Blobby green slime with colorful toppings" /></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/slime-gallery-squishy.png" alt="Puffy aqua slime with sprinkles and beads" /></td>
+    <td width="50%"><img src="docs/slime-gallery-squishy.png" alt="Puffy-Pop aqua slime with sprinkles and beads" /></td>
     <td width="50%"><img src="docs/slime-gallery-stretchy.png" alt="Stretchy mango slime with colorful toppings" /></td>
   </tr>
 </table>

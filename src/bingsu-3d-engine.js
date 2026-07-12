@@ -13,6 +13,10 @@ export class BingsuSlime3DEngine {
     this.height = 1;
     this.aspect = 1;
     this.compression = 0;
+    this.elapsed = 0;
+    this.popCount = 0;
+    this.reloadCycle = 0;
+    this.reloadStart = null;
     this.flowX = 0;
     this.flowY = 0;
     this.flowTwist = 0;
@@ -51,8 +55,8 @@ export class BingsuSlime3DEngine {
     this.floor.receiveShadow = true;
     this.scene.add(this.floor);
 
-    this.columns = this.isMobile ? 8 : 12;
-    this.rows = this.isMobile ? 11 : 9;
+    this.columns = this.isMobile ? 6 : 8;
+    this.rows = this.isMobile ? 7 : 5;
     this.levelCount = 5;
     this.cells = [];
     for (let row = 0; row < this.rows; row += 1) {
@@ -65,6 +69,13 @@ export class BingsuSlime3DEngine {
           phase: index * 1.731,
           compression: 0,
           targetCompression: 0,
+          hitCount: 0,
+          state: 'active',
+          popAge: 0,
+          popLift: 0,
+          popVelocity: 0,
+          visibleScale: 1,
+          respawnAt: Infinity,
         });
       }
     }
@@ -79,7 +90,7 @@ export class BingsuSlime3DEngine {
       return mesh;
     });
 
-    const beadCount = this.isMobile ? 170 : 260;
+    const beadCount = this.isMobile ? 120 : 160;
     this.beads = Array.from({ length: beadCount }, (_, index) => ({
       cellIndex: (index * 37) % this.cells.length,
       ox: Math.sin(index * 2.31) * 0.34,
@@ -126,7 +137,7 @@ export class BingsuSlime3DEngine {
     return { x: (cell.nx - 0.5) * width, y: (0.5 - cell.ny) * 6.7, sx: width / this.columns * 0.72, sy: 6.7 / this.rows * 0.76 };
   }
 
-  touch(x, y, dx = 0, dy = 0) {
+  touch(x, y, dx = 0, dy = 0, isStart = false) {
     const nx = clamp(x / this.width, 0, 1);
     const ny = clamp(y / this.height, 0, 1);
     this.flowX = clamp(this.flowX + dx * 0.7, -this.width * 0.35, this.width * 0.35);
@@ -143,6 +154,22 @@ export class BingsuSlime3DEngine {
     this.compression = Math.max(this.compression, compressed / 5.5);
     this.dyeTrails.push({ x: nx, y: ny, createdAt: performance.now() });
     if (this.dyeTrails.length > 160) this.dyeTrails.shift();
+    if (!isStart) return null;
+
+    const target = this.cells
+      .map((cell, index) => ({ cell, index, distance: Math.hypot(cell.nx - nx, cell.ny - ny) }))
+      .filter(({ cell }) => cell.state === 'active')
+      .sort((first, second) => first.distance - second.distance)[0];
+    if (!target || target.distance > 0.22) return null;
+    target.cell.hitCount += 1;
+    target.cell.targetCompression = 1;
+    if (target.cell.hitCount < 3) return { popped: false, index: target.index, hits: target.cell.hitCount };
+    target.cell.state = 'popping';
+    target.cell.popAge = 0;
+    target.cell.popLift = 0;
+    target.cell.popVelocity = 1.15;
+    this.popCount += 1;
+    return { popped: true, index: target.index, hits: target.cell.hitCount };
   }
 
   updateInstances() {
@@ -153,18 +180,27 @@ export class BingsuSlime3DEngine {
       const depth = cell.compression * (0.38 + cell.tier * 0.08);
       const height = (0.36 + cell.tier * 0.07) * (1 - cell.compression * 0.62);
       const mesh = this.cellMeshes[index];
-      mesh.position.set(world.x, world.y, 0.02 + tierLift - depth);
+      mesh.visible = cell.visibleScale > 0.008;
+      mesh.position.set(world.x, world.y, 0.02 + tierLift - depth + cell.popLift);
       mesh.rotation.set(0, 0, Math.sin(cell.phase) * 0.08);
-      mesh.scale.set(world.sx * 0.88 * (1 + cell.compression * 0.08), world.sy * 0.88 * (1 + cell.compression * 0.08), height);
+      mesh.scale.set(
+        world.sx * 0.88 * (1 + cell.compression * 0.08) * cell.visibleScale,
+        world.sy * 0.88 * (1 + cell.compression * 0.08) * cell.visibleScale,
+        height * cell.visibleScale,
+      );
     });
     this.beads.forEach((bead, index) => {
       const cell = this.cells[bead.cellIndex];
       const world = this.cellWorld(cell);
       const tierLift = cell.tier * 0.16;
       const depth = cell.compression * (0.4 + cell.tier * 0.08);
-      this.dummy.position.set(world.x + bead.ox * world.sx, world.y + bead.oy * world.sy, 0.42 + tierLift - depth);
+      this.dummy.position.set(world.x + bead.ox * world.sx, world.y + bead.oy * world.sy, 0.42 + tierLift - depth + cell.popLift);
       this.dummy.rotation.set(0.08, 0.16, bead.angle + this.flowTwist * 0.05);
-      this.dummy.scale.set(world.sx * 0.17 * bead.size, world.sy * 0.055, 0.055);
+      this.dummy.scale.set(
+        world.sx * 0.17 * bead.size * cell.visibleScale,
+        world.sy * 0.055 * cell.visibleScale,
+        0.055 * cell.visibleScale,
+      );
       this.dummy.updateMatrix();
       this.beadMesh.setMatrixAt(index, this.dummy.matrix);
     });
@@ -174,18 +210,70 @@ export class BingsuSlime3DEngine {
   update(dt = 16.6667) {
     if (this.disposed) return;
     const seconds = clamp(dt, 0, 50) / 1000;
+    this.elapsed += seconds;
     let maximumCompression = 0;
     this.cells.forEach((cell) => {
+      if (cell.state === 'popping') {
+        cell.popAge += seconds;
+        cell.popVelocity -= 3.8 * seconds;
+        cell.popLift += cell.popVelocity * seconds;
+        cell.visibleScale = cell.popAge < 0.12
+          ? 1 + Math.sin(cell.popAge / 0.12 * Math.PI) * 0.28
+          : clamp(1 - (cell.popAge - 0.12) / 0.34, 0, 1);
+        if (cell.popAge >= 0.46) {
+          cell.state = 'gone';
+          cell.visibleScale = 0;
+          cell.compression = 0;
+          cell.targetCompression = 0;
+        }
+        return;
+      }
+      if (cell.state === 'gone') {
+        if (this.elapsed >= cell.respawnAt) {
+          cell.state = 'respawning';
+          cell.visibleScale = 0.02;
+          cell.popLift = -0.12;
+          cell.hitCount = 0;
+        }
+        return;
+      }
+      if (cell.state === 'respawning') {
+        cell.visibleScale = damp(cell.visibleScale, 1, 3.2, seconds);
+        cell.popLift = damp(cell.popLift, 0, 4, seconds);
+        if (cell.visibleScale > 0.985) {
+          cell.visibleScale = 1;
+          cell.state = 'active';
+        }
+      }
       cell.compression = damp(cell.compression, cell.targetCompression, cell.targetCompression > cell.compression ? 20 : 2.8, seconds);
       cell.targetCompression = damp(cell.targetCompression, 0, 1.7, seconds);
       maximumCompression = Math.max(maximumCompression, cell.compression);
     });
+    if (this.reloadStart === null && this.cells.every((cell) => cell.state === 'gone')) {
+      this.reloadStart = this.elapsed + 1.1;
+      this.reloadCycle += 1;
+      this.cells.forEach((cell, index) => { cell.respawnAt = this.reloadStart + index * 0.045; });
+    }
+    if (this.reloadStart !== null && this.cells.every((cell) => cell.state === 'active')) this.reloadStart = null;
     this.compression = damp(this.compression, maximumCompression, 8, seconds);
     this.flowX *= 0.995;
     this.flowY *= 0.995;
     this.flowTwist *= 0.994;
     this.updateInstances();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  get popMetrics() {
+    const count = (state) => this.cells.filter((cell) => cell.state === state).length;
+    return {
+      pressesPerPop: 3,
+      poppedTotal: this.popCount,
+      remaining: count('active') + count('respawning'),
+      popping: count('popping'),
+      gone: count('gone'),
+      reloading: this.reloadStart !== null,
+      reloadCycle: this.reloadCycle,
+    };
   }
 
   dispose() {

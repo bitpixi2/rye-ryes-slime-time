@@ -69,6 +69,8 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Kept Stretchy's endpoint centers within a safe 14%–86% horizontal and 8%–92% vertical region so its rounded ends retain a visible edge margin. Strand-side ownership is deterministic: grabbing the left half controls the left end and grabbing the right half controls the right end.
 - Replaced Puffy's prior crunchy bingsu loop/accent with the supplied `Soft foam ball squish` MP3 as its single interaction-gated looping sound.
 - Replaced Glowy's slosh with the supplied Ginsu Crunchy Slime #1 and #4 MP3s, alternating the loop on each new press interaction. Trimmed the supplied Soft Discovery Tone MP3 to exactly its first second and play it only when a slime type is selected.
+- Replaced the one-second sampled type-selection cue with the app's short four-note bright sparkle confirmation. Type selection stays separate from slime interaction loops and does not start them.
+- Renamed Puffy to `Puffy-Pop`. Each 3D puff now tracks three discrete presses, squashes, briefly over-inflates, and collapses away on the third; after all 40–42 puffs are gone, the bed pauses and then reinflates sequentially in a slow reload cycle. Added a dedicated procedural placeholder pop cue for completed pops.
 
 ## Complete
 
