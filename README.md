@@ -31,11 +31,4 @@ flowchart LR
 
 Built with Vite, Three.js, WebGL Fluid Enhanced, Canvas 2D, and the Web Audio and Vibration APIs.
 
-## Run locally
-
-```bash
-npm install
-npm run dev
-```
-
 [MIT licensed](LICENSE).
