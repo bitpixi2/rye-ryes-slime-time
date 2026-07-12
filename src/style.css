@@ -272,7 +272,7 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .slime-choice .lime { background: linear-gradient(145deg, #dfff58, #4ddc85); }
 .slime-choice .mango { background: linear-gradient(145deg, #ffd846, #ff6759); }
 .slime-choice .aqua { background: linear-gradient(145deg, #62f4e5, #229bf1); }
-.slime-choice .galaxy { background: radial-gradient(circle at 30% 25%, #ff85db 0 4%, transparent 5%), radial-gradient(circle at 65% 62%, #fff 0 2%, transparent 3%), linear-gradient(145deg, #7446f1, #21113f); }
+.slime-choice .galaxy { background: linear-gradient(145deg, #8e57ff 0%, #5930b8 52%, #21113f 100%); }
 
 .mix-choice i { border-radius: 14px; font-style: normal; font-size: 24px; }
 .sprinkle-preview { background: url('/candy-sprinkles.jpg') center / cover; }

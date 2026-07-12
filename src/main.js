@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import { OglCrackleEngine } from './crackle-ogl-engine.js';
 import { StretchyPutty3DEngine } from './putty-3d-engine.js';
+import { SampleLoopAudio } from './sample-loop-audio.js';
 import './style.css';
 
 const app = document.querySelector('#app');
@@ -28,6 +29,8 @@ exitPlayButton.inert = true;
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const desktopHoverEnabled = !isMobile && matchMedia('(pointer: fine)').matches;
+const DESKTOP_HOVER_POINTER_ID = 'desktop-hover';
 const TAU = Math.PI * 2;
 const SLIME_TYPES = ['liquidy', 'cloud3d', 'wax', 'bingsu', 'putty'];
 const MIX_TYPES = ['sprinkles', 'stars', 'beads', 'glitter'];
@@ -109,6 +112,11 @@ const state = {
   hapticCueCount: 0,
   textureHapticCount: 0,
   liquidClickCount: 0,
+  desktopHoverInside: false,
+  desktopSpacePressed: false,
+  desktopHoverMoves: 0,
+  desktopPresses: 0,
+  desktopPressFrames: 0,
 };
 
 const requestedSlimeType = new URLSearchParams(window.location.search).get('type');
@@ -1129,6 +1137,11 @@ class BingsuSlimeEngine {
     this.beads = [];
     this.folds = [];
     this.dyeTrails = [];
+    this.lastTrail = null;
+    this.trailCanvas = document.createElement('canvas');
+    this.trailCanvas.width = 512;
+    this.trailCanvas.height = 512;
+    this.trailContext = this.trailCanvas.getContext('2d');
     this.flowX = 0;
     this.flowY = 0;
     this.flowTwist = 0;
@@ -1176,21 +1189,20 @@ class BingsuSlimeEngine {
     this.flowX = clamp(this.flowX + dx * 0.82, -this.width * 0.38, this.width * 0.38);
     this.flowY = clamp(this.flowY + dy * 0.82, -this.height * 0.38, this.height * 0.38);
     this.flowTwist = clamp(this.flowTwist + (ndx - ndy) * 3.2, -1.4, 1.4);
-    const newestTrail = this.dyeTrails[0];
-    if (!newestTrail || newestTrail.age > 0.045 || Math.hypot(newestTrail.x - nx, newestTrail.y - ny) > 0.035) {
-      this.dyeTrails.unshift({
+    const now = performance.now();
+    if (!this.lastTrail || now - this.lastTrail.createdAt > 45 || Math.hypot(this.lastTrail.x - nx, this.lastTrail.y - ny) > 0.035) {
+      const trail = {
         x: nx,
         y: ny,
         fromX: clamp(nx - ndx * 3.6, 0, 1),
         fromY: clamp(ny - ndy * 3.6, 0, 1),
-        vx: ndx * 0.2,
-        vy: ndy * 0.2,
         colorIndex: (this.dyeTrails.length * 2 + Math.round(nx * 7) + Math.round(ny * 5)) % themes[state.theme].dyePalette.length,
         size: clamp(0.11 + Math.hypot(dx, dy) / Math.min(this.width, this.height) * 0.8, 0.11, 0.22),
-        age: 0,
-        life: 4.8,
-      });
-      this.dyeTrails.length = Math.min(this.dyeTrails.length, 22);
+        createdAt: now,
+      };
+      this.dyeTrails.push(trail);
+      this.lastTrail = trail;
+      this.stampTrail(trail);
     }
     const radius = 0.19;
     let compressed = 0;
@@ -1218,6 +1230,45 @@ class BingsuSlimeEngine {
     }
   }
 
+  stampTrail(trail) {
+    const context = this.trailContext;
+    const size = this.trailCanvas.width;
+    const palette = themes[state.theme].dyePalette;
+    const startX = trail.fromX * size;
+    const startY = trail.fromY * size;
+    const endX = trail.x * size;
+    const endY = trail.y * size;
+    context.save();
+    // Store one stable colored mark per interaction instead of repeatedly
+    // screen-blending the offscreen texture toward white as trails accumulate.
+    context.globalCompositeOperation = 'source-over';
+    context.lineCap = 'round';
+    context.globalAlpha = 0.32;
+    context.strokeStyle = palette[trail.colorIndex % palette.length];
+    context.lineWidth = size * trail.size;
+    context.shadowColor = palette[(trail.colorIndex + 1) % palette.length];
+    context.shadowBlur = size * 0.04;
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.quadraticCurveTo(
+      (startX + endX) / 2 + this.flowTwist * 18,
+      (startY + endY) / 2 - this.flowTwist * 16,
+      endX,
+      endY,
+    );
+    context.stroke();
+    context.shadowBlur = 0;
+    const bloom = context.createRadialGradient(endX, endY, 0, endX, endY, size * trail.size * 0.75);
+    bloom.addColorStop(0, palette[(trail.colorIndex + 2) % palette.length]);
+    bloom.addColorStop(1, 'rgba(255,255,255,0)');
+    context.globalAlpha = 0.22;
+    context.fillStyle = bloom;
+    context.beginPath();
+    context.arc(endX, endY, size * trail.size * 0.75, 0, TAU);
+    context.fill();
+    context.restore();
+  }
+
   update(dt) {
     const frameScale = dt / 16.6667;
     this.renderElapsed += dt;
@@ -1227,16 +1278,6 @@ class BingsuSlimeEngine {
     this.flowTwist *= 0.994 ** frameScale;
     this.folds.forEach((fold) => { fold.age += dt / 1000; });
     this.folds = this.folds.filter((fold) => fold.age < 2.5);
-    this.dyeTrails.forEach((trail) => {
-      trail.age += dt / 1000;
-      trail.x = clamp(trail.x + trail.vx * frameScale, -0.08, 1.08);
-      trail.y = clamp(trail.y + trail.vy * frameScale, -0.08, 1.08);
-      trail.fromX = clamp(trail.fromX + trail.vx * 0.32 * frameScale, -0.08, 1.08);
-      trail.fromY = clamp(trail.fromY + trail.vy * 0.32 * frameScale, -0.08, 1.08);
-      trail.vx *= 0.95 ** frameScale;
-      trail.vy *= 0.95 ** frameScale;
-    });
-    this.dyeTrails = this.dyeTrails.filter((trail) => trail.age < trail.life);
     this.beads.forEach((bead) => {
       bead.vx += (bead.homeX - bead.x) * 0.00055 * frameScale;
       bead.vy += (bead.homeY - bead.y) * 0.00055 * frameScale;
@@ -1301,38 +1342,8 @@ class BingsuSlimeEngine {
     }
 
     context.globalCompositeOperation = 'screen';
-    context.lineCap = 'round';
-    this.dyeTrails.forEach((trail) => {
-      const fade = Math.max(0, 1 - trail.age / trail.life) ** 0.7;
-      const startX = trail.fromX * width;
-      const startY = trail.fromY * height;
-      const endX = trail.x * width;
-      const endY = trail.y * height;
-      context.globalAlpha = 0.34 * fade;
-      context.strokeStyle = palette[trail.colorIndex % palette.length];
-      context.lineWidth = Math.min(width, height) * trail.size;
-      context.shadowColor = palette[(trail.colorIndex + 1) % palette.length];
-      context.shadowBlur = Math.min(width, height) * 0.07;
-      context.beginPath();
-      context.moveTo(startX, startY);
-      context.quadraticCurveTo(
-        (startX + endX) / 2 + this.flowTwist * 24,
-        (startY + endY) / 2 - this.flowTwist * 20,
-        endX,
-        endY,
-      );
-      context.stroke();
-      context.shadowBlur = 0;
-      const bloom = context.createRadialGradient(endX, endY, 0, endX, endY, Math.min(width, height) * trail.size * 0.75);
-      bloom.addColorStop(0, palette[(trail.colorIndex + 2) % palette.length]);
-      bloom.addColorStop(1, 'rgba(255,255,255,0)');
-      context.globalAlpha = 0.28 * fade;
-      context.fillStyle = bloom;
-      context.beginPath();
-      context.arc(endX, endY, Math.min(width, height) * trail.size * 0.75, 0, TAU);
-      context.fill();
-    });
-    context.shadowBlur = 0;
+    context.globalAlpha = 1;
+    context.drawImage(this.trailCanvas, 0, 0, width, height);
 
     context.globalCompositeOperation = 'overlay';
     this.folds.forEach((fold) => {
@@ -1394,6 +1405,7 @@ class BingsuSlimeEngine {
 }
 
 const audio = new SlimeAudio();
+const sampleLoops = new SampleLoopAudio({ mode: state.slimeType, muted: state.muted });
 const toppings = new ToppingLayer(toppingContext);
 let fluid = null;
 let cloudSlime = null;
@@ -1469,6 +1481,8 @@ function fluidConfig() {
 function bindSlimeInput() {
   slimeCanvas.addEventListener('pointerdown', pointerDown, { passive: false });
   slimeCanvas.addEventListener('pointermove', pointerMove, { passive: false });
+  slimeCanvas.addEventListener('pointerenter', desktopPointerEnter);
+  slimeCanvas.addEventListener('pointerleave', desktopPointerLeave);
   slimeCanvas.addEventListener('pointerup', pointerUp);
   slimeCanvas.addEventListener('pointercancel', pointerUp);
   slimeCanvas.addEventListener('contextmenu', (event) => event.preventDefault());
@@ -1487,6 +1501,8 @@ function replaceSlimeCanvas() {
 function initFluid({ replace = false, seedDelay = 100 } = {}) {
   try {
     clearSeedTimers();
+    state.desktopHoverInside = false;
+    state.desktopSpacePressed = false;
     state.activePointers.clear();
     state.settlingPointers = [];
     state.averagePointerLag = 0;
@@ -1709,10 +1725,138 @@ function canvasPosition(event) {
   return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
 }
 
+function isDesktopHoverEvent(event) {
+  return desktopHoverEnabled && event.pointerType === 'mouse';
+}
+
+function createDesktopHoverPointer(position) {
+  const palette = state.slimeType === 'liquidy'
+    ? (LIQUID_CONTRAST_PALETTES[state.theme] || themes[state.theme].dyePalette)
+    : themes[state.theme].dyePalette;
+  const colorIndex = (state.splatCount + state.desktopHoverMoves) % palette.length;
+  const pointer = {
+    id: DESKTOP_HOVER_POINTER_ID,
+    x: position.x,
+    y: position.y,
+    slimeX: position.x,
+    slimeY: position.y,
+    lastX: position.x,
+    lastY: position.y,
+    speed: 0,
+    moveCount: 0,
+    colorIndex,
+    color: palette[colorIndex],
+    desktopHover: true,
+    pressing: false,
+    pressFrameCount: 0,
+  };
+  state.activePointers.set(DESKTOP_HOVER_POINTER_ID, pointer);
+  return pointer;
+}
+
+function ensureDesktopHoverPointer(position) {
+  state.settlingPointers = state.settlingPointers.filter((pointer) => pointer.id !== DESKTOP_HOVER_POINTER_ID);
+  return state.activePointers.get(DESKTOP_HOVER_POINTER_ID) || createDesktopHoverPointer(position);
+}
+
+function desktopPointerEnter(event) {
+  if (!state.started || !isDesktopHoverEvent(event)) return;
+  state.desktopHoverInside = true;
+  ensureDesktopHoverPointer(canvasPosition(event));
+}
+
+function updateDesktopHover(event) {
+  const position = canvasPosition(event);
+  state.desktopHoverInside = true;
+  const pointer = ensureDesktopHoverPointer(position);
+  const dx = position.x - pointer.lastX;
+  const dy = position.y - pointer.lastY;
+  const speed = Math.hypot(dx, dy);
+  pointer.x = position.x;
+  pointer.y = position.y;
+  pointer.lastX = position.x;
+  pointer.lastY = position.y;
+  pointer.speed = speed;
+  if (speed > 0.05) {
+    state.desktopHoverMoves += 1;
+    state.interactionEnergy = clamp(state.interactionEnergy + speed * 0.018, 0, 10);
+  }
+}
+
+function beginDesktopPress() {
+  if (!desktopHoverEnabled || !state.started || !state.desktopHoverInside || state.desktopSpacePressed) return false;
+  const pointer = state.activePointers.get(DESKTOP_HOVER_POINTER_ID);
+  if (!pointer) return false;
+  state.desktopSpacePressed = true;
+  state.desktopPresses += 1;
+  pointer.pressing = true;
+  pointer.pressFrameCount = 0;
+  // A deliberate press lands at the visible cursor, not at the lagging trail
+  // that gives ordinary hover movement its thick, resistant feel.
+  pointer.slimeX = pointer.x;
+  pointer.slimeY = pointer.y;
+  audio.init();
+  sampleLoops.start(state.slimeType);
+  sampleLoops.press(1);
+
+  if (state.slimeType === 'liquidy') {
+    const contrastColor = smooshLiquid(pointer.x, pointer.y);
+    if (contrastColor) pointer.color = contrastColor;
+  } else if (state.slimeType === 'cloud3d') {
+    cloudSlime?.touch(pointer.x, pointer.y, 0, 0, pointer.id, true);
+  } else if (state.slimeType === 'putty') {
+    puttySlime?.touch(pointer.x, pointer.y, 0, 0, pointer.id, true);
+  } else if (state.slimeType === 'wax') {
+    // Flow/compress the soft bed now; fracture effort is added only by the
+    // held-Space frames in updatePointerPhysics.
+    waxSlime?.touch(pointer.x, pointer.y, 0, 0);
+  } else {
+    bingsuSlime?.touch(pointer.x, pointer.y, 0, 0);
+  }
+  toppings.stir(pointer.x, pointer.y, 0, 0, 0.72);
+  audio.squelch(state.slimeType === 'wax' ? 0.34 : 0.72, state.slimeType === 'bingsu' ? 1.02 : 0.82);
+  return true;
+}
+
+function endDesktopPress({ sound = true } = {}) {
+  const pointer = state.activePointers.get(DESKTOP_HOVER_POINTER_ID);
+  if (!state.desktopSpacePressed && !pointer?.pressing) return false;
+  state.desktopSpacePressed = false;
+  if (pointer) pointer.pressing = false;
+  cloudSlime?.release?.(DESKTOP_HOVER_POINTER_ID);
+  puttySlime?.release?.(DESKTOP_HOVER_POINTER_ID);
+  if (sound) audio.release(pointer?.speed || 5);
+  return true;
+}
+
+function clearDesktopHoverContact({ sound = true } = {}) {
+  endDesktopPress({ sound });
+  cloudSlime?.release?.(DESKTOP_HOVER_POINTER_ID);
+  puttySlime?.release?.(DESKTOP_HOVER_POINTER_ID);
+  state.desktopHoverInside = false;
+  state.activePointers.delete(DESKTOP_HOVER_POINTER_ID);
+  state.settlingPointers = state.settlingPointers.filter((pointer) => pointer.id !== DESKTOP_HOVER_POINTER_ID);
+}
+
+function desktopPointerLeave(event) {
+  if (!isDesktopHoverEvent(event)) return;
+  clearDesktopHoverContact();
+}
+
 function pointerDown(event) {
   if (!state.started) return;
   event.preventDefault();
+  if (isDesktopHoverEvent(event)) {
+    state.desktopHoverInside = true;
+    ensureDesktopHoverPointer(canvasPosition(event));
+    slimeCanvas.focus({ preventScroll: true });
+    audio.init();
+    hideHint();
+    return;
+  }
   audio.init();
+  sampleLoops.start(state.slimeType);
+  sampleLoops.press(state.slimeType === 'bingsu' ? 1 : 0.82);
   const position = canvasPosition(event);
   try { slimeCanvas.setPointerCapture?.(event.pointerId); } catch { /* Capture is optional. */ }
   const palette = themes[state.theme].dyePalette;
@@ -1730,6 +1874,8 @@ function pointerDown(event) {
     moveCount: 0,
     colorIndex,
     color: palette[colorIndex],
+    desktopHover: false,
+    pressing: true,
   });
   const nudge = event.pressure > 0 ? event.pressure * 8 : 4;
   if (state.slimeType === 'liquidy') {
@@ -1738,7 +1884,7 @@ function pointerDown(event) {
   }
   else if (state.slimeType === 'cloud3d') cloudSlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
   else if (state.slimeType === 'putty') puttySlime?.touch(position.x, position.y, 0, 0, event.pointerId, true);
-  else if (state.slimeType === 'wax') waxSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
+  else if (state.slimeType === 'wax') waxSlime?.touch(position.x, position.y, 0, 0);
   else bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4);
   toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
   if (state.slimeType === 'bingsu') {
@@ -1757,6 +1903,11 @@ function pointerDown(event) {
 }
 
 function pointerMove(event) {
+  if (state.started && isDesktopHoverEvent(event)) {
+    event.preventDefault();
+    updateDesktopHover(event);
+    return;
+  }
   const pointer = state.activePointers.get(event.pointerId);
   if (!pointer) return;
   event.preventDefault();
@@ -1773,6 +1924,7 @@ function pointerMove(event) {
 }
 
 function pointerUp(event) {
+  if (isDesktopHoverEvent(event)) return;
   const pointer = state.activePointers.get(event.pointerId);
   if (!pointer) return;
   state.activePointers.delete(event.pointerId);
@@ -1789,6 +1941,11 @@ function pointerUp(event) {
 
 function handleCanvasKey(event) {
   if (!state.started) return;
+  if (event.code === 'Space' && desktopHoverEnabled) {
+    if (state.playMode || state.desktopHoverInside) event.preventDefault();
+    beginDesktopPress();
+    return;
+  }
   const centerX = state.toppingWidth / 2;
   const centerY = state.toppingHeight / 2;
   const directions = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
@@ -1807,7 +1964,7 @@ function handleCanvasKey(event) {
     toppings.stir(centerX, centerY, dx, dy, 0.7);
     audio.wetDrag(24, 1);
   }
-  if (event.key === ' ' || event.key === 'Enter') {
+  if ((!desktopHoverEnabled && event.key === ' ') || event.key === 'Enter') {
     event.preventDefault();
     addSwirlGrid(7, 0.05);
     audio.squelch(0.7, 0.86);
@@ -1826,6 +1983,36 @@ function resizeToppings() {
   waxSlime?.resize(state.toppingWidth, state.toppingHeight);
   bingsuSlime?.resize(state.toppingWidth, state.toppingHeight);
   toppings.render();
+}
+
+function applyDesktopPressFrame(pointer, dt, lag) {
+  if (!pointer.desktopHover || !pointer.pressing) return;
+  pointer.pressFrameCount += 1;
+  state.desktopPressFrames += 1;
+  const pressX = pointer.x;
+  const pressY = pointer.y;
+
+  if (state.slimeType === 'wax') {
+    waxSlime?.press(pressX, pressY, dt, pointer.speed);
+  } else if (lag < 0.08) {
+    if (state.slimeType === 'liquidy') {
+      if (pointer.pressFrameCount % 7 === 1) {
+        const angle = pointer.pressFrameCount * 0.47;
+        localFluidSplat(pressX, pressY, Math.cos(angle) * 3.2, Math.sin(angle) * 3.2, pointer.color, 0, 11);
+      }
+    } else if (state.slimeType === 'cloud3d') {
+      cloudSlime?.touch(pressX, pressY, 0, 0, pointer.id);
+    } else if (state.slimeType === 'putty') {
+      puttySlime?.touch(pressX, pressY, 0, 0, pointer.id);
+    } else {
+      bingsuSlime?.touch(pressX, pressY, 0, 0);
+    }
+  }
+
+  if (pointer.pressFrameCount % 5 === 0) {
+    const direction = pointer.pressFrameCount * 0.31;
+    toppings.stir(pressX, pressY, Math.cos(direction) * 0.45, Math.sin(direction) * 0.45, 0.86);
+  }
 }
 
 function updatePointerPhysics(dt) {
@@ -1851,7 +2038,10 @@ function updatePointerPhysics(dt) {
     const offsetY = pointer.y - pointer.slimeY;
     const lag = Math.hypot(offsetX, offsetY);
     if (isActive) totalLag += lag;
-    if (isActive && state.slimeType === 'wax') waxSlime?.press(pointer.slimeX, pointer.slimeY, dt, pointer.speed);
+    if (isActive && !pointer.desktopHover && state.slimeType === 'wax') {
+      waxSlime?.press(pointer.slimeX, pointer.slimeY, dt, pointer.speed);
+    }
+    if (isActive) applyDesktopPressFrame(pointer, dt, lag);
     if (lag < 0.08) return;
 
     let moveX = offsetX * followAmount;
@@ -1880,7 +2070,10 @@ function updatePointerPhysics(dt) {
       : (pointer.moveCount % 12 === 0 ? 0.032 : 0);
     if (state.slimeType === 'liquidy') localFluidSplat(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.color, ribbonIntensity, 6);
     else if (state.slimeType === 'cloud3d') cloudSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.id);
-    else if (state.slimeType === 'putty') puttySlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.id);
+    else if (state.slimeType === 'putty') {
+      if (pointer.desktopHover && !pointer.pressing) puttySlime?.hover?.(pointer.slimeX, pointer.slimeY, moveX, moveY);
+      else puttySlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY, pointer.id);
+    }
     else if (state.slimeType === 'wax') waxSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
     else bingsuSlime?.touch(pointer.slimeX, pointer.slimeY, moveX, moveY);
     toppings.stir(pointer.slimeX, pointer.slimeY, moveX, moveY, 0.48 + Math.max(1, touchCount) * 0.07);
@@ -1897,9 +2090,14 @@ function updatePointerPhysics(dt) {
     return keepSettling;
   });
   state.averagePointerLag = touchCount ? totalLag / touchCount : 0;
-  if (touchCount) {
-    const averageSpeed = Math.max(3.5, heldSpeed / touchCount);
-    if (audio.wetDrag(averageSpeed, touchCount)) textureHaptic(averageSpeed, state.averagePointerLag, touchCount);
+  const soundingPointers = [...state.activePointers.values()].filter((pointer) => (
+    !pointer.desktopHover || pointer.pressing || pointer.speed > 0.4 || Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY) > 0.35
+  ));
+  if (soundingPointers.length) {
+    const averageSpeed = Math.max(3.5, heldSpeed / Math.max(1, soundingPointers.length));
+    if (audio.wetDrag(averageSpeed, soundingPointers.length)) {
+      textureHaptic(averageSpeed, state.averagePointerLag, soundingPointers.length);
+    }
   }
 }
 
@@ -1907,6 +2105,20 @@ function updateGame(dt) {
   state.time += dt;
   state.interactionEnergy *= 0.982 ** (dt / 16.6667);
   updatePointerPhysics(dt);
+  const activeContacts = [...state.activePointers.values()];
+  const contactSpeed = activeContacts.reduce((sum, pointer) => sum + pointer.speed, 0);
+  const contactLag = activeContacts.reduce(
+    (sum, pointer) => sum + Math.hypot(pointer.x - pointer.slimeX, pointer.y - pointer.slimeY),
+    0,
+  );
+  const touchHeld = activeContacts.some((pointer) => !pointer.desktopHover && pointer.pressing);
+  const hoverFloor = state.desktopHoverInside && activeContacts.length ? 0.07 : 0;
+  const touchFloor = touchHeld ? 0.22 : 0;
+  const pressBoost = state.desktopSpacePressed ? 0.4 : touchHeld ? 0.26 : 0;
+  const motionActivity = activeContacts.length
+    ? contactSpeed / (activeContacts.length * 32) + contactLag / (activeContacts.length * 190)
+    : 0;
+  sampleLoops.update(dt, clamp(hoverFloor + touchFloor + pressBoost + motionActivity, 0, 1));
   cloudSlime?.update(dt);
   puttySlime?.update(dt);
   waxSlime?.update(dt);
@@ -2001,6 +2213,9 @@ function hideHint() {
 function startMaking() {
   audio.init();
   audio.squelch(0.68, 0.92);
+  sampleLoops.selectMode(state.slimeType);
+  if (state.typeChosen) sampleLoops.start(state.slimeType);
+  sampleLoops.playDiscovery(0.8);
   haptic([10, 24, 15]);
   state.started = true;
   welcomeCard.classList.add('hidden');
@@ -2011,6 +2226,8 @@ function startMaking() {
 
 function enterPlayMode() {
   if (!state.started || state.playMode) return;
+  sampleLoops.selectMode(state.slimeType);
+  sampleLoops.start(state.slimeType);
   state.playMode = true;
   app.classList.add('full-slime');
   resetViewportOrigin();
@@ -2028,12 +2245,17 @@ function enterPlayMode() {
     resizeToppings();
     if (state.slimeType === 'liquidy') initFluid({ replace: true, seedDelay: 90 });
     toppings.syncMixins();
-    showHint('Draw slow circles to fold the colors!', 2200);
+    showHint(
+      desktopHoverEnabled ? 'Move your mouse • hold Space to press!' : 'Draw slow circles to fold the colors!',
+      2200,
+    );
   }, 470);
 }
 
 function exitPlayMode() {
   if (!state.playMode) return;
+  clearDesktopHoverContact({ sound: false });
+  sampleLoops.setActivity(0);
   state.playMode = false;
   app.classList.remove('full-slime');
   resetViewportOrigin();
@@ -2054,6 +2276,8 @@ function exitPlayMode() {
 
 function goHome() {
   if (state.playMode) exitPlayMode();
+  clearDesktopHoverContact({ sound: false });
+  sampleLoops.stop();
   state.started = false;
   state.typeChosen = false;
   document.querySelectorAll('.type-choice').forEach((choice) => {
@@ -2097,10 +2321,14 @@ soundButton.setAttribute('aria-pressed', String(!state.muted));
 soundButton.setAttribute('aria-label', state.muted ? 'Turn sound on' : 'Turn sound off');
 soundButton.addEventListener('click', () => {
   state.muted = !state.muted;
+  sampleLoops.setMuted(state.muted);
   soundButton.classList.toggle('sound-muted', state.muted);
   soundButton.setAttribute('aria-pressed', String(!state.muted));
   soundButton.setAttribute('aria-label', state.muted ? 'Turn sound on' : 'Turn sound off');
-  if (!state.muted) audio.release(11);
+  if (!state.muted) {
+    audio.release(11);
+    if (state.typeChosen) sampleLoops.start(state.slimeType);
+  }
   haptic(5);
   saveRecipe();
 });
@@ -2118,6 +2346,8 @@ document.querySelectorAll('.type-choice').forEach((button) => {
       choice.setAttribute('aria-pressed', String(isSelected));
     });
     initFluid({ replace: true, seedDelay: 100 });
+    sampleLoops.selectMode(state.slimeType);
+    sampleLoops.start(state.slimeType);
     const previewPitch = state.slimeType === 'cloud3d' ? 0.72
       : state.slimeType === 'putty' ? 0.88
         : state.slimeType === 'wax' ? 0.8
@@ -2183,10 +2413,26 @@ document.querySelectorAll('.mix-choice').forEach((button) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.code === 'Space' && desktopHoverEnabled && state.started) {
+    if (state.playMode || state.desktopHoverInside) event.preventDefault();
+    if (state.desktopHoverInside) beginDesktopPress();
+  }
   if (event.key === 'Escape' && state.playMode) exitPlayMode();
 });
 
+document.addEventListener('keyup', (event) => {
+  if (event.code !== 'Space' || !desktopHoverEnabled) return;
+  if (state.playMode || state.desktopSpacePressed) event.preventDefault();
+  endDesktopPress();
+});
+
+window.addEventListener('blur', () => clearDesktopHoverContact({ sound: false }));
+
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearDesktopHoverContact({ sound: false });
+    sampleLoops.setActivity(0);
+  }
   if (!document.hidden && audio.context?.state === 'suspended' && !state.muted) audio.context.resume();
 });
 
@@ -2217,9 +2463,19 @@ window.render_game_to_text = () => JSON.stringify({
     interactionEnergy: Number(state.interactionEnergy.toFixed(2)),
     averagePointerLag: Number(state.averagePointerLag.toFixed(1)),
     motionProfile: 'extra thick: 315ms touch lag, broad low-force impulses, very strong velocity damping, low curl',
-    activeTouches: state.activePointers.size,
+    activeTouches: [...state.activePointers.values()].filter((pointer) => !pointer.desktopHover).length,
+    activeContacts: state.activePointers.size,
     settlingDrags: state.settlingPointers.length,
     liquidContrastSmooshes: state.liquidClickCount,
+  },
+  input: {
+    desktopHoverEnabled,
+    desktopHoverInside: state.desktopHoverInside,
+    desktopHoverContactActive: state.activePointers.has(DESKTOP_HOVER_POINTER_ID),
+    spacePressed: state.desktopSpacePressed,
+    hoverMoves: state.desktopHoverMoves,
+    presses: state.desktopPresses,
+    pressFrames: state.desktopPressFrames,
   },
   navigation: {
     typeChosen: state.typeChosen,
@@ -2248,11 +2504,14 @@ window.render_game_to_text = () => JSON.stringify({
     accumulatedPressEffort: Number((waxSlime?.totalEffort || 0).toFixed(2)),
     currentCrackProgress: Number((waxSlime?.pressProgress || 0).toFixed(2)),
     shellIntegrity: waxSlime?.shellIntegrity ?? 1,
+    shellSpecularStrength: waxSlime?.shellSpecularStrength ?? 0,
+    movableUnderlayer: waxSlime?.underlayerMetrics || null,
   } : state.slimeType === 'bingsu' ? {
-    kind: 'intrinsic iridescent tube beads with moving persistent dye flow',
+    kind: 'intrinsic iridescent tube beads with permanent session-long dye trails',
     beadCount: bingsuSlime?.beads.length || 0,
     compression: Number((bingsuSlime?.compression || 0).toFixed(2)),
     dyeTrails: bingsuSlime?.dyeTrails.length || 0,
+    trailPersistence: 'permanent until reset or a new slime is chosen',
     flowOffset: {
       x: Number((bingsuSlime?.flowX || 0).toFixed(1)),
       y: Number((bingsuSlime?.flowY || 0).toFixed(1)),
@@ -2272,6 +2531,7 @@ window.render_game_to_text = () => JSON.stringify({
         : state.slimeType === 'cloud3d'
           ? 'deep mushy squelch, low suction, airy irregular foam crackle'
           : 'layered wet squelch, low suction, irregular soft foam texture',
+  sampleLoop: sampleLoops.metrics,
   cloudSlimeTextureBursts: audio.textureBurstCount,
   mushBursts: audio.mushBurstCount,
   foamCrunchBursts: audio.foamCrunchCount,

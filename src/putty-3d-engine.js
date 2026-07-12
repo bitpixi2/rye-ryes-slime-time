@@ -42,6 +42,11 @@ export class StretchyPutty3DEngine {
     ];
     this.endTargets = this.ends.map((point) => point.clone());
     this.grabs = new Map();
+    this.pointerModes = new Map();
+    this.pokes = [];
+    this.pokeCount = 0;
+    this.hoverDent = { t: 0.5, strength: 0 };
+    this.hoverDeformationCount = 0;
     this.bendOffsets = [0, 0.18, -0.13, 0.22, -0.16, 0.1, 0];
     this.bendImpulse = 0;
 
@@ -163,6 +168,11 @@ export class StretchyPutty3DEngine {
       endpointsNormalized,
       stretchRatio: Number(this.stretchRatio.toFixed(3)),
       activeGrabs: this.grabs.size,
+      pokeCount: this.pokeCount,
+      activePokes: this.pokes.filter((poke) => poke.held).length,
+      visibleDimples: this.pokes.filter((poke) => poke.strength > 0.025).length,
+      hoverDeformations: this.hoverDeformationCount,
+      hoverDentStrength: Number(this.hoverDent.strength.toFixed(3)),
     };
   }
 
@@ -209,23 +219,77 @@ export class StretchyPutty3DEngine {
   touch(x, y, dx = 0, dy = 0, pointerId = 0, isStart = false) {
     if (this.disposed) return -1;
     const id = pointerId ?? 0;
-    let endIndex = this.grabs.get(id);
-    if (endIndex === undefined) {
+    let mode = this.pointerModes.get(id);
+
+    if (isStart && !mode) {
       const usedEnds = new Set(this.grabs.values());
       const candidates = [0, 1].filter((index) => !usedEnds.has(index));
-      if (!candidates.length) return -1;
-      endIndex = candidates.reduce((nearest, index) => {
-        const point = this.ends[index];
-        const distance = Math.hypot((point.x * this.width) - x, (point.y * this.height) - y);
-        const nearestPoint = this.ends[nearest];
-        const nearestDistance = Math.hypot((nearestPoint.x * this.width) - x, (nearestPoint.y * this.height) - y);
-        return distance < nearestDistance ? index : nearest;
-      }, candidates[0]);
-      this.grabs.set(id, endIndex);
-    } else if (isStart) {
-      // Repeated pointer starts retain the original end assignment.
-      this.grabs.set(id, endIndex);
+      const distanceToEnd = (index) => Math.hypot(
+        (this.ends[index].x * this.width) - x,
+        (this.ends[index].y * this.height) - y,
+      );
+      const nearestEnd = [0, 1].reduce((nearest, index) => (
+        distanceToEnd(index) < distanceToEnd(nearest) ? index : nearest
+      ), 0);
+      const nearestAvailableEnd = candidates.length
+        ? candidates.reduce((nearest, index) => (
+          distanceToEnd(index) < distanceToEnd(nearest) ? index : nearest
+        ), candidates[0])
+        : -1;
+      const nearestEndDistance = distanceToEnd(nearestEnd);
+      const nearestAvailableDistance = nearestAvailableEnd >= 0
+        ? distanceToEnd(nearestAvailableEnd)
+        : Infinity;
+      const endHitRadius = Math.max(this.isMobile ? 50 : 42, Math.min(this.width, this.height) * 0.15);
+
+      if (nearestAvailableDistance <= endHitRadius) {
+        mode = { type: 'grab', endIndex: nearestAvailableEnd };
+        this.pointerModes.set(id, mode);
+        this.grabs.set(id, nearestAvailableEnd);
+      } else if (nearestEndDistance <= endHitRadius) {
+        this.pointerModes.set(id, { type: 'none' });
+        return -1;
+      } else {
+        const tubeHit = this.findTubeHit(x, y);
+        if (!tubeHit || tubeHit.t < 0.12 || tubeHit.t > 0.88) {
+          this.pointerModes.set(id, { type: 'none' });
+          return -1;
+        }
+
+        const poke = {
+          pointerId: id,
+          t: tubeHit.t,
+          strength: 0.58,
+          held: true,
+          holdUntil: this.elapsed + 0.3,
+        };
+        this.pokes.push(poke);
+        this.pokeCount += 1;
+        mode = { type: 'poke', poke };
+        this.pointerModes.set(id, mode);
+        this.geometryDirty = true;
+        this.geometryAccumulator = Math.max(this.geometryAccumulator, this.geometryInterval);
+        return 'poke';
+      }
     }
+
+    // A pointer that began away from the material must stay inert until it is
+    // released. This prevents a later move from unexpectedly grabbing an end.
+    if (!mode || mode.type === 'none') return -1;
+
+    if (mode.type === 'poke') {
+      const tubeHit = this.findTubeHit(x, y);
+      if (tubeHit && tubeHit.t >= 0.12 && tubeHit.t <= 0.88) {
+        mode.poke.t = damp(mode.poke.t, tubeHit.t, 18, 1 / 60);
+      }
+      mode.poke.held = true;
+      mode.poke.strength = Math.max(mode.poke.strength, 0.62);
+      mode.poke.holdUntil = Math.max(mode.poke.holdUntil, this.elapsed + 0.18);
+      this.geometryDirty = true;
+      return 'poke';
+    }
+
+    const endIndex = mode.endIndex;
 
     const target = this.endTargets[endIndex];
     target.set(
@@ -250,11 +314,37 @@ export class StretchyPutty3DEngine {
     return endIndex;
   }
 
+  hover(x, y, dx = 0, dy = 0) {
+    if (this.disposed) return false;
+    const tubeHit = this.findTubeHit(x, y);
+    if (!tubeHit) return false;
+    const speed = Math.hypot(dx, dy);
+    this.hoverDent.t = damp(this.hoverDent.t, tubeHit.t, 20, 1 / 60);
+    this.hoverDent.strength = Math.max(
+      this.hoverDent.strength,
+      clamp(0.07 + speed * 0.018, 0.07, 0.2),
+    );
+    this.hoverDeformationCount += 1;
+    this.geometryDirty = true;
+    this.geometryAccumulator = Math.max(this.geometryAccumulator, this.geometryInterval);
+    return true;
+  }
+
   release(pointerId = 0) {
     if (this.disposed) return false;
     const id = pointerId ?? 0;
-    const endIndex = this.grabs.get(id);
-    if (endIndex === undefined) return false;
+    const mode = this.pointerModes.get(id);
+    this.pointerModes.delete(id);
+    if (!mode || mode.type === 'none') return false;
+
+    if (mode.type === 'poke') {
+      mode.poke.held = false;
+      mode.poke.holdUntil = Math.max(mode.poke.holdUntil, this.elapsed + 0.28);
+      this.geometryDirty = true;
+      return true;
+    }
+
+    const endIndex = mode.endIndex;
     this.grabs.delete(id);
     this.endTargets[endIndex].copy(this.ends[endIndex]);
     this.geometryDirty = true;
@@ -280,7 +370,32 @@ export class StretchyPutty3DEngine {
       moved ||= Math.abs(point.x - previousX) + Math.abs(point.y - previousY) > 0.00002;
     });
 
-    if (moved) this.geometryDirty = true;
+    let pokeChanged = false;
+    const previousHoverStrength = this.hoverDent.strength;
+    this.hoverDent.strength = damp(this.hoverDent.strength, 0, 5.5, seconds);
+    pokeChanged ||= Math.abs(this.hoverDent.strength - previousHoverStrength) > 0.0001;
+    this.pokes.forEach((poke) => {
+      const previousStrength = poke.strength;
+      let targetStrength = 0;
+      let sharpness = 2.15;
+      if (poke.held) {
+        targetStrength = 0.78;
+        sharpness = 16;
+      } else if (this.elapsed < poke.holdUntil) {
+        // Keep even a quick tap visible before the slow, thick recovery.
+        targetStrength = Math.max(0.56, poke.strength);
+        sharpness = 18;
+      }
+      poke.strength = damp(poke.strength, targetStrength, sharpness, seconds);
+      pokeChanged ||= Math.abs(poke.strength - previousStrength) > 0.0001;
+    });
+    const previousPokeLength = this.pokes.length;
+    this.pokes = this.pokes.filter((poke) => (
+      poke.held || this.elapsed < poke.holdUntil || poke.strength > 0.008
+    ));
+    pokeChanged ||= this.pokes.length !== previousPokeLength;
+
+    if (moved || pokeChanged) this.geometryDirty = true;
     if (this.geometryDirty && this.geometryAccumulator >= this.geometryInterval) {
       this.geometryAccumulator %= this.geometryInterval;
       this.rebuildGeometry();
@@ -321,6 +436,28 @@ export class StretchyPutty3DEngine {
     this.pointerNdc.set(x * 2 - 1, 1 - y * 2);
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     return this.raycaster.ray.intersectPlane(this.interactionPlane, target) || target.set(0, 0, 0.08);
+  }
+
+  findTubeHit(x, y) {
+    if (!this.currentCurve) return null;
+    this.camera.updateMatrixWorld();
+    const samples = this.isMobile ? 42 : 56;
+    let nearest = null;
+    const projected = new THREE.Vector3();
+    for (let index = 0; index <= samples; index += 1) {
+      const t = index / samples;
+      projected.copy(this.currentCurve.getPoint(t)).project(this.camera);
+      const screenX = (projected.x + 1) * 0.5 * this.width;
+      const screenY = (1 - projected.y) * 0.5 * this.height;
+      const distance = Math.hypot(screenX - x, screenY - y);
+      if (!nearest || distance < nearest.distance) nearest = { t, distance };
+    }
+
+    const tubeHitRadius = Math.max(
+      this.isMobile ? 44 : 34,
+      Math.min(this.width, this.height) * 0.17,
+    );
+    return nearest?.distance <= tubeHitRadius ? nearest : null;
   }
 
   buildCurvePoints() {
@@ -367,6 +504,68 @@ export class StretchyPutty3DEngine {
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   }
 
+  applyPokeDimples(geometry, curve, radius, tubularSegments, radialSegments) {
+    const visiblePokes = this.pokes.filter((poke) => poke.strength > 0.008);
+    if (this.hoverDent.strength > 0.008) visiblePokes.push(this.hoverDent);
+    if (!visiblePokes.length) return;
+
+    const positions = geometry.getAttribute('position');
+    const originalNormals = geometry.getAttribute('normal').array.slice();
+    const vertexInfluences = new Float32Array(positions.count);
+    const ringSize = radialSegments + 1;
+    const curvePoint = new THREE.Vector3();
+    for (let ring = 0; ring <= tubularSegments; ring += 1) {
+      const t = ring / tubularSegments;
+      curve.getPoint(t, curvePoint);
+      for (let radial = 0; radial <= radialSegments; radial += 1) {
+        const index = ring * ringSize + radial;
+        const originalX = positions.getX(index);
+        const originalY = positions.getY(index);
+        const originalZ = positions.getZ(index);
+        const topness = clamp(((originalZ - curvePoint.z) / Math.max(0.0001, radius) + 0.08) / 1.08, 0, 1);
+        const topMask = topness * topness;
+        if (topMask <= 0.0001) continue;
+
+        let dimpleInfluence = 0;
+        visiblePokes.forEach((poke) => {
+          const distanceAlong = Math.abs(t - poke.t);
+          const spread = 0.075;
+          const localWeight = Math.exp(-0.5 * (distanceAlong / spread) ** 2);
+          dimpleInfluence += localWeight * poke.strength;
+        });
+        dimpleInfluence = clamp(dimpleInfluence, 0, 0.92) * topMask;
+        if (dimpleInfluence <= 0.0001) continue;
+        vertexInfluences[index] = dimpleInfluence;
+
+        // Pull the lip slightly inward and push the camera-facing surface down.
+        // Recomputing normals afterwards turns this into a softly shadowed dent
+        // rather than a flat color mark painted on the putty.
+        const inwardAmount = dimpleInfluence * 0.07;
+        positions.setX(index, originalX + (curvePoint.x - originalX) * inwardAmount);
+        positions.setY(index, originalY + (curvePoint.y - originalY) * inwardAmount);
+        positions.setZ(index, originalZ - radius * 0.34 * dimpleInfluence);
+      }
+    }
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+    const normals = geometry.getAttribute('normal');
+    for (let index = 0; index < normals.count; index += 1) {
+      const blend = clamp(vertexInfluences[index] * 2.4, 0, 1);
+      if (blend >= 0.999) continue;
+      const offset = index * 3;
+      let nx = originalNormals[offset] * (1 - blend) + normals.getX(index) * blend;
+      let ny = originalNormals[offset + 1] * (1 - blend) + normals.getY(index) * blend;
+      let nz = originalNormals[offset + 2] * (1 - blend) + normals.getZ(index) * blend;
+      const length = Math.max(0.0001, Math.hypot(nx, ny, nz));
+      nx /= length;
+      ny /= length;
+      nz /= length;
+      normals.setXYZ(index, nx, ny, nz);
+    }
+    normals.needsUpdate = true;
+    geometry.computeBoundingSphere();
+  }
+
   rebuildGeometry() {
     if (this.disposed || !this.palette.length) return;
     const points = this.buildCurvePoints();
@@ -378,6 +577,7 @@ export class StretchyPutty3DEngine {
     const radialSegments = this.isMobile ? 8 : 11;
     const geometry = new THREE.TubeGeometry(curve, tubularSegments, radius, radialSegments, false);
     this.applyTubeColors(geometry);
+    this.applyPokeDimples(geometry, curve, radius, tubularSegments, radialSegments);
 
     const oldGeometry = this.tube.geometry;
     this.tube.geometry = geometry;
@@ -398,6 +598,8 @@ export class StretchyPutty3DEngine {
     if (this.disposed) return;
     this.disposed = true;
     this.grabs.clear();
+    this.pointerModes.clear();
+    this.pokes.length = 0;
     this.tube.geometry.dispose();
     this.tubeMaterial.dispose();
     this.bulbGeometry.dispose();

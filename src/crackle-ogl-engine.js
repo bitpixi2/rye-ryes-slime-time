@@ -7,7 +7,6 @@ const DEFAULT_THEME = {
   accent: '#ff4d9d',
 };
 
-const TAU = Math.PI * 2;
 const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
 const randomBetween = (minimum, maximum) => minimum + Math.random() * (maximum - minimum);
 
@@ -44,6 +43,7 @@ const fragmentShader = /* glsl */ `
   precision highp float;
   uniform vec3 uColor;
   uniform float uGloss;
+  uniform float uSpecularStrength;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
 
@@ -53,10 +53,10 @@ const fragmentShader = /* glsl */ `
     float diffuse = max(dot(normal, lightDirection), 0.0);
     vec3 viewDirection = normalize(-vViewPosition);
     vec3 halfDirection = normalize(lightDirection + viewDirection);
-    float highlight = pow(max(dot(normal, halfDirection), 0.0), mix(9.0, 28.0, uGloss));
-    float edgeShade = 0.78 + 0.22 * abs(normal.z);
-    vec3 color = uColor * (0.32 + diffuse * 0.78) * edgeShade;
-    color += highlight * mix(0.18, 0.62, uGloss);
+    float highlight = pow(max(dot(normal, halfDirection), 0.0), mix(16.0, 42.0, uGloss));
+    float edgeShade = 0.82 + 0.18 * abs(normal.z);
+    vec3 color = uColor * (0.4 + diffuse * 0.56) * edgeShade;
+    color += highlight * uSpecularStrength;
     gl_FragColor = vec4(color, 1.0);
   }
 `;
@@ -84,6 +84,10 @@ export class OglCrackleEngine {
     this.lastBreak = { x: -1, y: -1 };
     this.totalEffort = 0;
     this.pressProgress = 0;
+    this.underlayerDragEvents = 0;
+    this.underlayerDragDistance = 0;
+    this.underlayerFlowEnergy = 0;
+    this.shellSpecularStrength = 0.085;
     this.disposed = false;
 
     this.renderer = new Renderer({
@@ -108,13 +112,14 @@ export class OglCrackleEngine {
     this.gl.clearColor(baseRgb[0] * 0.42, baseRgb[1] * 0.42, baseRgb[2] * 0.42, 1);
 
     this.programs = [];
-    const makeProgram = (color, gloss = 0.5) => {
+    const makeProgram = (color, gloss = 0.5, specularStrength = 0.1) => {
       const program = new Program(this.gl, {
         vertex: vertexShader,
         fragment: fragmentShader,
         uniforms: {
           uColor: { value: color },
           uGloss: { value: gloss },
+          uSpecularStrength: { value: specularStrength },
         },
         cullFace: this.gl.BACK,
       });
@@ -131,10 +136,15 @@ export class OglCrackleEngine {
       mixRgb(ivory, colorToRgb(theme.accent || '#ff9dd1'), 0.12),
       mixRgb(ivory, shellTint, 0.34),
     ];
-    this.shellPrograms = shellColors.map((color, index) => makeProgram(color, 0.72 - index * 0.045));
+    this.shellPrograms = shellColors.map((color, index) => makeProgram(
+      color,
+      0.52 - index * 0.025,
+      this.shellSpecularStrength - index * 0.008,
+    ));
     this.slimePrograms = dyePalette.map((color, index) => makeProgram(
       mixRgb(colorToRgb(color), colorToRgb(theme.base), index % 2 ? 0.08 : 0.18),
-      0.42,
+      0.34,
+      0.15,
     ));
 
     this.boxGeometry = new Box(this.gl);
@@ -148,14 +158,32 @@ export class OglCrackleEngine {
     this.base.position.z = -0.62;
     this.base.setParent(this.scene);
 
-    this.slimeBlobs = Array.from({ length: 7 }, (_, index) => {
+    const underlayerPositions = [
+      [0.16, 0.18], [0.48, 0.14], [0.82, 0.19],
+      [0.1, 0.5], [0.35, 0.46], [0.63, 0.54], [0.9, 0.48],
+      [0.2, 0.82], [0.51, 0.84], [0.82, 0.79],
+    ];
+    this.slimeBlobs = underlayerPositions.map(([nx, ny], index) => {
       const mesh = new Mesh(this.gl, {
         geometry: this.sphereGeometry,
         program: this.slimePrograms[index % this.slimePrograms.length],
       });
-      mesh.position.z = -0.06 + (index % 3) * 0.025;
       mesh.setParent(this.scene);
-      return { mesh, index };
+      return {
+        mesh,
+        index,
+        nx,
+        ny,
+        homeNx: nx,
+        homeNy: ny,
+        vx: 0,
+        vy: 0,
+        compression: 0,
+        phase: index * 1.37,
+        baseScaleX: 1,
+        baseScaleY: 1,
+        baseScaleZ: 0.44 + (index % 3) * 0.018,
+      };
     });
 
     this.columns = this.isMobile ? 10 : 12;
@@ -189,6 +217,79 @@ export class OglCrackleEngine {
     this.resize(1, 1);
   }
 
+  layoutSlimeBlob(blob) {
+    const speed = Math.hypot(blob.vx, blob.vy);
+    const stretchX = 1 + Math.min(0.18, Math.abs(blob.vx) * 1.5) + blob.compression * 0.07;
+    const stretchY = 1 + Math.min(0.18, Math.abs(blob.vy) * 1.5) + blob.compression * 0.07;
+    blob.mesh.position.x = (blob.nx - 0.5) * this.viewWidth;
+    blob.mesh.position.y = (0.5 - blob.ny) * this.viewHeight;
+    blob.mesh.position.z = -0.105 - blob.compression * 0.025 + Math.sin(this.elapsed * 0.68 + blob.phase) * 0.012;
+    blob.mesh.scale.set(
+      blob.baseScaleX * stretchX,
+      blob.baseScaleY * stretchY,
+      blob.baseScaleZ * (1 - blob.compression * 0.26),
+    );
+    blob.mesh.rotation.z = Math.sin(this.elapsed * 0.2 + blob.phase) * 0.018
+      + Math.atan2(blob.vy, blob.vx || 0.0001) * Math.min(0.035, speed * 0.16);
+  }
+
+  flowSlime(x, y, dx = 0, dy = 0) {
+    const nx = clamp(x / this.width, 0, 1);
+    const ny = clamp(y / this.height, 0, 1);
+    const ndx = clamp(dx / this.width, -0.035, 0.035);
+    const ndy = clamp(dy / this.height, -0.035, 0.035);
+    const dragDistance = Math.hypot(ndx, ndy);
+    const radius = 0.34;
+    const nearby = this.slimeBlobs
+      .map((blob) => ({ blob, distance: Math.hypot(blob.nx - nx, blob.ny - ny) }))
+      .sort((first, second) => first.distance - second.distance);
+
+    nearby.forEach(({ blob, distance }, index) => {
+      if (distance > radius && index > 1) return;
+      const influence = distance < radius ? (1 - distance / radius) ** 2 : 0.08;
+      const offsetX = blob.nx - nx;
+      const offsetY = blob.ny - ny;
+      blob.vx += (ndx * 1.45 - offsetY * dragDistance * 0.18) * influence;
+      blob.vy += (ndy * 1.45 + offsetX * dragDistance * 0.18) * influence;
+      blob.compression = Math.max(blob.compression, clamp(0.22 + dragDistance * 32, 0.22, 0.8) * influence);
+    });
+
+    if (dragDistance > 0.0002) {
+      this.underlayerDragEvents += 1;
+      this.underlayerDragDistance += dragDistance;
+      this.underlayerFlowEnergy = clamp(this.underlayerFlowEnergy + dragDistance * 9, 0, 1.5);
+    }
+  }
+
+  compressUnderlayer(x, y, effortSeconds, motion) {
+    const nx = clamp(x / this.width, 0, 1);
+    const ny = clamp(y / this.height, 0, 1);
+    const pressure = clamp(effortSeconds * 8 + motion * 0.006, 0.03, 0.38);
+    this.slimeBlobs
+      .map((blob) => ({ blob, distance: Math.hypot(blob.nx - nx, blob.ny - ny) }))
+      .sort((first, second) => first.distance - second.distance)
+      .slice(0, 3)
+      .forEach(({ blob }, index) => {
+        blob.compression = clamp(blob.compression + pressure * (1 - index * 0.24), 0, 1);
+      });
+    this.underlayerFlowEnergy = Math.max(this.underlayerFlowEnergy, pressure);
+  }
+
+  get underlayerMetrics() {
+    const displacements = this.slimeBlobs.map((blob) => Math.hypot(blob.nx - blob.homeNx, blob.ny - blob.homeNy));
+    const center = this.slimeBlobs.reduce((sum, blob) => ({ x: sum.x + blob.nx, y: sum.y + blob.ny }), { x: 0, y: 0 });
+    center.x /= this.slimeBlobs.length;
+    center.y /= this.slimeBlobs.length;
+    return {
+      dragEvents: this.underlayerDragEvents,
+      dragDistance: Number(this.underlayerDragDistance.toFixed(3)),
+      flowEnergy: Number(this.underlayerFlowEnergy.toFixed(3)),
+      averageDisplacement: Number((displacements.reduce((sum, value) => sum + value, 0) / displacements.length).toFixed(3)),
+      maxDisplacement: Number(Math.max(...displacements).toFixed(3)),
+      center: { x: Number(center.x.toFixed(3)), y: Number(center.y.toFixed(3)) },
+    };
+  }
+
   resize(width, height) {
     if (this.disposed) return;
     this.width = Math.max(1, width);
@@ -218,22 +319,16 @@ export class OglCrackleEngine {
       plate.mesh.scale.set(cellWidth * 1.018, cellHeight * 1.018, 0.105);
     });
 
-    this.slimeBlobs.forEach(({ mesh, index }) => {
-      const angle = index * TAU / this.slimeBlobs.length + 0.28;
-      mesh.position.x = Math.cos(angle) * this.viewWidth * (index % 2 ? 0.24 : 0.31);
-      mesh.position.y = Math.sin(angle) * this.viewHeight * (index % 3 ? 0.23 : 0.3);
-      mesh.scale.set(
-        this.viewWidth * (0.31 + (index % 3) * 0.035),
-        this.viewHeight * (0.24 + (index % 2) * 0.035),
-        0.62 + (index % 3) * 0.07,
-      );
+    this.slimeBlobs.forEach((blob) => {
+      blob.baseScaleX = this.viewWidth * (0.28 + (blob.index % 3) * 0.025);
+      blob.baseScaleY = this.viewHeight * (0.23 + (blob.index % 2) * 0.025);
+      this.layoutSlimeBlob(blob);
     });
   }
 
   touch(x, y, dx = 0, dy = 0) {
     if (this.disposed) return;
-    const speed = Math.hypot(dx, dy);
-    this.press(x, y, 12 + Math.min(44, speed * 1.8), speed);
+    this.flowSlime(x, y, dx, dy);
   }
 
   press(x, y, effortMilliseconds = 16.6667, motion = 0) {
@@ -247,6 +342,7 @@ export class OglCrackleEngine {
       .sort((a, b) => a.distance - b.distance);
     if (!candidates.length) return false;
     const effortSeconds = clamp(effortMilliseconds, 0, 80) / 1000;
+    this.compressUnderlayer(x, y, effortSeconds, motion);
     const effortRate = 0.58 + Math.min(0.46, motion * 0.018);
     const focus = candidates.slice(0, 3);
     const weights = [1, 0.34, 0.14];
@@ -302,9 +398,25 @@ export class OglCrackleEngine {
     const seconds = clamp(Number.isFinite(dt) ? dt : 16.6667, 0, 50) / 1000;
     this.elapsed += seconds;
 
-    this.slimeBlobs.forEach(({ mesh, index }) => {
-      mesh.position.z = -0.06 + Math.sin(this.elapsed * 0.72 + index * 1.4) * 0.028;
-      mesh.rotation.z = Math.sin(this.elapsed * 0.19 + index) * 0.025;
+    this.underlayerFlowEnergy *= Math.exp(-2.4 * seconds);
+    this.slimeBlobs.forEach((blob) => {
+      blob.vx += (blob.homeNx - blob.nx) * 0.18 * seconds;
+      blob.vy += (blob.homeNy - blob.ny) * 0.18 * seconds;
+      const damping = Math.exp(-3.6 * seconds);
+      blob.vx *= damping;
+      blob.vy *= damping;
+      blob.nx += blob.vx * seconds;
+      blob.ny += blob.vy * seconds;
+      if (blob.nx < 0.045 || blob.nx > 0.955) {
+        blob.nx = clamp(blob.nx, 0.045, 0.955);
+        blob.vx *= -0.28;
+      }
+      if (blob.ny < 0.045 || blob.ny > 0.955) {
+        blob.ny = clamp(blob.ny, 0.045, 0.955);
+        blob.vy *= -0.28;
+      }
+      blob.compression *= Math.exp(-2.8 * seconds);
+      this.layoutSlimeBlob(blob);
     });
 
     this.plates.forEach((plate) => {
