@@ -247,8 +247,8 @@ export class StretchyPutty3DEngine {
           return -1;
         }
 
-        // The entire strand is a grab handle. Wait for the drag direction so
-        // a middle press moving right takes the right end (and vice versa).
+        // The entire strand is a grab handle. The half that was touched owns
+        // the matching end: left always pulls left and right always pulls right.
         mode = { type: 'pending-grab', tubeT: tubeHit.t };
         this.pointerModes.set(id, mode);
       }
@@ -263,9 +263,7 @@ export class StretchyPutty3DEngine {
       const usedEnds = new Set(this.grabs.values());
       const candidates = [0, 1].filter((index) => !usedEnds.has(index));
       if (!candidates.length) return -1;
-      const directionalEnd = Math.abs(dx) >= Math.abs(dy)
-        ? (dx >= 0 ? 1 : 0)
-        : (mode.tubeT >= 0.5 ? 1 : 0);
+      const directionalEnd = mode.tubeT >= 0.5 ? 1 : 0;
       const endIndex = candidates.includes(directionalEnd) ? directionalEnd : candidates[0];
       mode = { type: 'grab', endIndex };
       this.pointerModes.set(id, mode);
@@ -276,8 +274,8 @@ export class StretchyPutty3DEngine {
 
     const target = this.endTargets[endIndex];
     target.set(
-      clamp(x / this.width, 0.015, 0.985),
-      clamp(y / this.height, 0.025, 0.975),
+      clamp(x / this.width, 0.14, 0.86),
+      clamp(y / this.height, 0.08, 0.92),
     );
 
     const otherEnd = this.ends[1 - endIndex];

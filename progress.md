@@ -65,6 +65,9 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Extended Blobby's non-fullscreen 3D render rectangle 72px upward behind the opaque header and resized the renderer to that overscan area. Raised geometry and shadows now clip behind the header instead of forming visible straight cut lines at the top corners.
 - Standardized the child-facing term as `Toppings` instead of `Mix-ins`. Changing the slime color now recolors every existing topping from the new palette while preserving topping counts, positions, types, and material anchors.
 - Swapped Glowy and Squishy sound assignments: Glowy now uses the softer slosh loop, while Squishy has the crunchy bingsu loop and press accent. Replaced Squishy's flat Canvas renderer with a Three.js instanced 3D bed of three raised material levels and 170–260 embedded bingsu beads; local cells and their beads press visibly downward, widen, darken, and recover slowly.
+- Removed Glowy's decorative dot and diagonal-line overlays. Renamed Squishy to `Puffy` in the app and README, and expanded its Three.js puff bed from three height levels to five taller levels while keeping local press-down compression and slow reinflation.
+- Kept Stretchy's endpoint centers within a safe 14%–86% horizontal and 8%–92% vertical region so its rounded ends retain a visible edge margin. Strand-side ownership is deterministic: grabbing the left half controls the left end and grabbing the right half controls the right end.
+- Replaced Puffy's prior crunchy bingsu loop/accent with the supplied `Soft foam ball squish` MP3 as its single interaction-gated looping sound.
 
 ## Complete
 

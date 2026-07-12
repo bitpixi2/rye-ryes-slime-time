@@ -53,6 +53,7 @@ export class BingsuSlime3DEngine {
 
     this.columns = this.isMobile ? 8 : 12;
     this.rows = this.isMobile ? 11 : 9;
+    this.levelCount = 5;
     this.cells = [];
     for (let row = 0; row < this.rows; row += 1) {
       for (let column = 0; column < this.columns; column += 1) {
@@ -60,7 +61,7 @@ export class BingsuSlime3DEngine {
         this.cells.push({
           nx: (column + 0.5 + (row % 2) * 0.14) / this.columns,
           ny: (row + 0.5) / this.rows,
-          tier: (column + row * 2 + index) % 3,
+          tier: (column + row * 2 + index) % this.levelCount,
           phase: index * 1.731,
           compression: 0,
           targetCompression: 0,
@@ -148,7 +149,7 @@ export class BingsuSlime3DEngine {
     if (this.disposed || !this.palette?.length) return;
     this.cells.forEach((cell, index) => {
       const world = this.cellWorld(cell);
-      const tierLift = cell.tier * 0.19;
+      const tierLift = cell.tier * 0.16;
       const depth = cell.compression * (0.38 + cell.tier * 0.08);
       const height = (0.36 + cell.tier * 0.07) * (1 - cell.compression * 0.62);
       const mesh = this.cellMeshes[index];
@@ -159,7 +160,7 @@ export class BingsuSlime3DEngine {
     this.beads.forEach((bead, index) => {
       const cell = this.cells[bead.cellIndex];
       const world = this.cellWorld(cell);
-      const tierLift = cell.tier * 0.19;
+      const tierLift = cell.tier * 0.16;
       const depth = cell.compression * (0.4 + cell.tier * 0.08);
       this.dummy.position.set(world.x + bead.ox * world.sx, world.y + bead.oy * world.sy, 0.42 + tierLift - depth);
       this.dummy.rotation.set(0.08, 0.16, bead.angle + this.flowTwist * 0.05);

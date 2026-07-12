@@ -10,10 +10,8 @@ export const SAMPLE_LOOP_PROFILES = Object.freeze({
     volumeCap: 0.145,
   }),
   bingsu: Object.freeze({
-    file: '/audio/bingsu-crunch-loop.mp3',
-    volumeCap: 0.24,
-    pressFile: '/audio/bingsu-press-crunch.mp3',
-    pressVolumeCap: 0.14,
+    file: '/audio/puffy-foam-squish.mp3',
+    volumeCap: 0.18,
   }),
   putty: Object.freeze({
     file: '/audio/liquidy-gel-slime.mp3',

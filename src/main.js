@@ -2526,7 +2526,7 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     const names = {
       liquidy: 'Glowy',
       cloud3d: 'Blobby',
-      bingsu: 'Squishy',
+      bingsu: 'Puffy',
       putty: 'Stretchy',
     };
     setStep('type', { feedback: false });
@@ -2671,6 +2671,7 @@ window.render_game_to_text = () => JSON.stringify({
     rebuildCadence: isMobile ? 'fixed 25fps while deforming; frozen while idle' : 'fixed 30fps while deforming; frozen while idle',
   } : state.slimeType === 'bingsu' ? {
     kind: 'layered 3D bingsu chunks that compress downward under pressure',
+    heightLevels: bingsuSlime?.levelCount || 0,
     beadCount: bingsuSlime?.beads.length || 0,
     compression: Number((bingsuSlime?.compression || 0).toFixed(2)),
     dyeTrails: bingsuSlime?.dyeTrails.length || 0,
