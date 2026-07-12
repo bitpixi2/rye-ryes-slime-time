@@ -60,6 +60,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Made animal faces fully opaque with wider smiles. Added per-engine resistance profiles so Glowy responds slightly faster and Stretchy responds faster again while preserving their thick, lagged feel.
 - Made uploaded slime loops strictly interaction-gated: no sample starts during navigation, type choice, play entry, or unmute. Mobile QA confirmed zero playback before contact, active playback while pressed, and immediate silence on release, with no browser errors.
 - Rotated the requested uploaded sound assignments in order: Glowy now uses the former Squishy crunchy loop/accent, Squishy uses the former Stretchy slosh, and Stretchy uses the former Glowy gel loop; Blobby is unchanged.
+- Removed Stretchy's poke, press-dimple, and hover-dent modes. Pressing anywhere on the visible strand now grabs its nearest available end, so desktop press-and-drag consistently stretches the material.
 
 ## Complete
 

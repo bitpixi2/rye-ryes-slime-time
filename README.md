@@ -9,25 +9,32 @@ Rye-Rye’s Slime Time is a playful, touch-first slime table for kids. Choose a 
 ## Technical architecture
 
 ```mermaid
-flowchart LR
-    UI["Kid-friendly chooser<br/>Type · Color · Toppings"] --> State["Recipe and interaction state"]
-    Touch["Touch / mouse input"] --> Feel["Resistance, multi-touch<br/>and haptic controller"]
-    Feel --> State
-    State --> Router{"Slime engine"}
-    Router --> Fluid["Glowy<br/>WebGL fluid simulation"]
-    Router --> Volume["Blobby<br/>Three.js marching cubes"]
-    Router --> Bingsu["Squishy<br/>Canvas particle field"]
-    Router --> Putty["Stretchy<br/>Three.js tube geometry"]
-    State --> Toppings["Canvas topping layer"]
-    State --> Audio["Interaction-gated<br/>sample loops"]
-    Fluid --> Stage["Full-screen slime stage"]
-    Volume --> Stage
-    Bingsu --> Stage
-    Putty --> Stage
-    Toppings --> Stage
+flowchart TB
+    UI["Categories"] --> Type["1 · Choose a type<br/>Four rendering engines"]
+    Type --> Engines["Glowy · WebGL fluid<br/>Blobby · Three.js volume<br/>Squishy · Canvas particles<br/>Stretchy · Three.js geometry"]
+    Engines --> Color["2 · Choose a color<br/>Shared slime palettes"]
+    Color --> Toppings["3 · Add toppings<br/>Canvas asset layer"]
+    Toppings --> Stage["4 · Fill the screen<br/>Slime, ElevenLabs sounds and haptics"]
+    Stage -. "Choose again" .-> UI
+
+    classDef berry fill:#f45ab4,stroke:#6c25b8,color:#ffffff,stroke-width:2px
+    classDef lime fill:#9bea72,stroke:#25865f,color:#173a2b,stroke-width:2px
+    classDef mango fill:#ffbd59,stroke:#d95a69,color:#4b2630,stroke-width:2px
+    classDef aqua fill:#62e6e1,stroke:#237bd7,color:#17334d,stroke-width:2px
+    classDef grape fill:#9a55ea,stroke:#5421a8,color:#ffffff,stroke-width:2px
+
+    class UI berry
+    class Type,Engines grape
+    class Color aqua
+    class Toppings lime
+    class Stage mango
 ```
 
 ![Stretchy slime with animal faces and stars](docs/stretchy-slime-desktop.png)
+
+## The joy of slime
+
+Slime turns texture, repetition, and transformation into open-ended play. For some autistic people, self-chosen tactile input and sensory or fidget toys can be comforting or support self-regulation, although sensory preferences are individual and slime will not suit everyone ([National Autistic Society](https://www.autism.org.uk/advice-and-guidance/about-autism/sensory-processing)). A screen cannot reproduce all the pressure, shear, weight, and stiffness of a physical toy, so software experiments like this one use responsive motion, resistance, sound, and vibration to suggest a small part of that tactile and kinaesthetic experience ([review of haptic virtual-object research](https://pmc.ncbi.nlm.nih.gov/articles/PMC9919508/)).
 
 <table>
   <tr>
