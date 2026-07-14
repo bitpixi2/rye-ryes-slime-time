@@ -12,7 +12,14 @@
     <main class="app-shell" id="app">
       <header class="topbar">
         <button class="wordmark" id="homeButton" aria-label="Rye-Rye’s Slime Time — go back to the start">
-          <span class="wordmark-name">RYE-RYE’S</span><span class="wordmark-tag">SLIME TIME</span>
+          <img
+            class="wordmark-logo"
+            src="/brand/rye-ryes-slime-time-logo.png"
+            alt=""
+            width="48"
+            height="48"
+            decoding="async"
+          />
         </button>
         <div class="top-actions">
           <button class="icon-button" id="resetButton" aria-label="Reset slime" title="Reset slime">
@@ -24,6 +31,19 @@
           </button>
         </div>
       </header>
+
+      <button class="splash-gate" id="splashGate" aria-label="Start Rye-Rye’s Slime Time">
+        <span class="splash-logo-orbit" aria-hidden="true">
+          <img
+            class="splash-logo"
+            src="/brand/rye-ryes-slime-time-logo.png"
+            alt=""
+            width="640"
+            height="640"
+            fetchpriority="high"
+          />
+        </span>
+      </button>
 
       <section class="playground" id="playground" aria-label="Slime playground">
         <div class="fluid-stage" id="fluidStage">

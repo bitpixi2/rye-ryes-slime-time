@@ -23,6 +23,7 @@ const nextStepButton = document.querySelector('#nextStepButton');
 const stepCount = document.querySelector('#stepCount');
 const stepName = document.querySelector('#stepName');
 const nextStepLabel = document.querySelector('#nextStepLabel');
+const splashGate = document.querySelector('#splashGate');
 
 exitPlayButton.inert = true;
 
@@ -89,6 +90,7 @@ const themes = {
 
 const state = {
   started: true,
+  startupSplashVisible: true,
   playMode: false,
   step: 'type',
   typeChosen: false,
@@ -2175,7 +2177,7 @@ function desktopPointerLeave(event) {
 }
 
 function pointerDown(event) {
-  if (!state.started) return;
+  if (!state.started || state.startupSplashVisible) return;
   event.preventDefault();
   if (isDesktopHoverEvent(event)) {
     state.desktopHoverInside = true;
@@ -2186,8 +2188,6 @@ function pointerDown(event) {
     return;
   }
   audio.init();
-  sampleLoops.start(state.slimeType);
-  sampleLoops.press(state.slimeType === 'bingsu' ? 1 : 0.82);
   const position = canvasPosition(event);
   try { slimeCanvas.setPointerCapture?.(event.pointerId); } catch { /* Capture is optional. */ }
   const palette = themes[state.theme].dyePalette;
@@ -2209,6 +2209,7 @@ function pointerDown(event) {
     pressing: true,
   });
   const nudge = event.pressure > 0 ? event.pressure * 8 : 4;
+  let completedPuffyPop = false;
   if (state.slimeType === 'liquidy') {
     const contrastColor = smooshLiquid(position.x, position.y);
     if (contrastColor) state.activePointers.get(event.pointerId).color = contrastColor;
@@ -2218,22 +2219,31 @@ function pointerDown(event) {
   else {
     const popResult = bingsuSlime?.touch(position.x, position.y, nudge, -nudge * 0.4, true);
     if (popResult?.popped) {
+      completedPuffyPop = true;
       toppings.removeForPuff(popResult.index);
-      audio.pop();
-      haptic([18, 22, 32], 1.45);
     }
   }
-  toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
-  if (state.slimeType === 'bingsu') {
-    audio.squelch(0.48 + state.activePointers.size * 0.1, 0.9);
-    audio.crunchTexture('bingsu', 0.94, { force: true });
+  if (completedPuffyPop) {
+    if (state.activePointers.size === 1) sampleLoops.silenceInteraction();
+    sampleLoops.playPop(() => audio.pop());
+    haptic([18, 22, 32], 1.45);
   } else {
-    audio.squelch(0.44 + state.activePointers.size * 0.12, 1 - state.activePointers.size * 0.06);
+    sampleLoops.start(state.slimeType);
+    sampleLoops.press(state.slimeType === 'bingsu' ? 1 : 0.82);
   }
-  const pressPattern = state.slimeType === 'bingsu'
-    ? [13, 6, 10, 6, 8]
-    : state.activePointers.size > 1 ? [18, 14, 16] : [16, 11, 13];
-  haptic(pressPattern, 1.3);
+  toppings.stir(position.x, position.y, nudge, -nudge, 0.35);
+  if (!completedPuffyPop) {
+    if (state.slimeType === 'bingsu') {
+      audio.squelch(0.48 + state.activePointers.size * 0.1, 0.9);
+      audio.crunchTexture('bingsu', 0.94, { force: true });
+    } else {
+      audio.squelch(0.44 + state.activePointers.size * 0.12, 1 - state.activePointers.size * 0.06);
+    }
+    const pressPattern = state.slimeType === 'bingsu'
+      ? [13, 6, 10, 6, 8]
+      : state.activePointers.size > 1 ? [18, 14, 16] : [16, 11, 13];
+    haptic(pressPattern, 1.3);
+  }
   hideHint();
 }
 
@@ -2617,9 +2627,27 @@ function resetSlime() {
   showHint('Fresh slime!', 1100);
 }
 
+function dismissStartupSplash(event) {
+  if (!state.startupSplashVisible) return;
+  event?.preventDefault();
+  event?.stopPropagation();
+  // Keep audio startup inside this first trusted gesture for mobile browsers.
+  audio.init();
+  audio.sparkle('welcome');
+  haptic([7, 18, 11], 1.2);
+  state.startupSplashVisible = false;
+  splashGate.classList.add('is-leaving');
+  splashGate.inert = true;
+  splashGate.setAttribute('aria-hidden', 'true');
+  window.setTimeout(() => {
+    splashGate.hidden = true;
+  }, prefersReducedMotion ? 0 : 440);
+}
+
 previousStepButton.addEventListener('click', () => moveStep(-1));
 nextStepButton.addEventListener('click', () => moveStep(1));
 document.querySelector('#homeButton').addEventListener('click', goHome);
+splashGate.addEventListener('click', dismissStartupSplash, { once: true });
 exitPlayButton.addEventListener('click', exitPlayMode);
 resetButton.addEventListener('click', resetSlime);
 
@@ -2654,12 +2682,7 @@ document.querySelectorAll('.type-choice').forEach((button) => {
     });
     initFluid({ replace: true, seedDelay: 100 });
     sampleLoops.selectMode(state.slimeType);
-    audio.sparkle('type-select');
-    const previewPitch = state.slimeType === 'cloud3d' ? 0.72
-      : state.slimeType === 'putty' ? 0.88
-        : state.slimeType === 'bingsu' ? 1.05
-          : 1;
-    audio.squelch(0.82, previewPitch);
+    sampleLoops.playTypeSelection();
     haptic([18, 14, 20, 12, 24]);
     const names = {
       liquidy: 'Glowy',
@@ -2687,7 +2710,7 @@ document.querySelectorAll('.slime-choice').forEach((button) => {
     toppings.syncMixins({ recolor: true });
     renderMixPreviews();
     initFluid({ replace: true, seedDelay: 120 });
-    audio.squelch(0.7, 0.78 + Math.random() * 0.25);
+    sampleLoops.playColorSelection();
     haptic([7, 14, 9]);
     showHint(`${themes[state.theme].name}!`, 1100);
     saveRecipe();
@@ -2755,7 +2778,7 @@ requestAnimationFrame(frame);
 
 window.render_game_to_text = () => JSON.stringify({
   coordinateSystem: 'Canvas origin is top-left; x increases right; y increases down; units are CSS pixels.',
-  mode: !state.started ? 'welcome' : state.playMode ? 'full-slime' : `making-${state.step}`,
+  mode: state.startupSplashVisible ? 'startup-splash' : !state.started ? 'welcome' : state.playMode ? 'full-slime' : `making-${state.step}`,
   recipe: { slimeType: state.slimeType, theme: state.theme, themeName: themes[state.theme].name, mixinBatches: Object.fromEntries(state.mixins) },
   simulation: {
     engine: !state.webglAvailable ? 'animated gradient fallback' : ({
@@ -2786,6 +2809,7 @@ window.render_game_to_text = () => JSON.stringify({
     pressFrames: state.desktopPressFrames,
   },
   navigation: {
+    startupSplashVisible: state.startupSplashVisible,
     typeChosen: state.typeChosen,
     nextArrowVisible: !nextStepButton.hidden,
     finalArrowAction: 'fill the screen',
@@ -2826,7 +2850,7 @@ window.render_game_to_text = () => JSON.stringify({
   } : null,
   sound: state.muted ? 'off' : 'on',
   soundProfile: state.slimeType === 'bingsu'
-      ? 'dense randomized plastic crunch grains, wet thick squish, occasional trapped-air pops'
+      ? 'alternating soft compression loops, then one tightly cropped real pop in two subtle pitches'
       : state.slimeType === 'putty'
         ? 'deep tacky pulls, low suction, soft rubbery foam texture'
         : state.slimeType === 'cloud3d'

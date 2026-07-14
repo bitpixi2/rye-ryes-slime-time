@@ -72,6 +72,11 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Replaced the one-second sampled type-selection cue with the app's short four-note bright sparkle confirmation. Type selection stays separate from slime interaction loops and does not start them.
 - Renamed Puffy to `Puffy-Pop`. Each 3D puff now tracks three discrete presses, squashes, briefly over-inflates, and collapses away on the third; after all 40–42 puffs are gone, the bed pauses and then reinflates sequentially in a slow reload cycle. Added a dedicated procedural placeholder pop cue for completed pops.
 - Anchored user toppings to individual active Puffy-Pop spheres. They follow the host puff while it squashes, are removed immediately when that puff enters its pop animation, never attach to gone/reloading puffs, and stay removed across color or topping-page revisits until the topping is cleared or the slime is reset.
+- Added a second, trimmed and level-matched Puffy-Pop compression loop so the two soft press textures alternate while a puff remains. Replaced the synthesized completed-pop cue with a tightly isolated real pop and a tempo-preserving half-semitone alternate; third presses skip the compression loop so the pop plays by itself.
+- Split the supplied confirmation waveform into two cropped one-shots with short edge fades and alternate them on type selection. Cropped, low-passed, and softened the supplied press confirmation for color selection; neither UI cue starts a slime interaction loop.
+- Replaced the text wordmark with the selected circular slime-streetwear logo, extracted onto a transparent background and optimized as a reusable 640px PNG.
+- Added a first-launch animated logo splash over the hero. It stays precisely centered while gently rotating and wobbling, consumes the first tap/click without selecting the UI underneath, initializes mobile Web Audio with a short welcome sparkle, then dissolves and stays gone for the session. The screen remains minimal with no instruction pill.
+- Tightened the two Puffy-Pop one-shots to 295ms with short entry/exit fades, removed obsolete missing discovery-audio code, prevented a completed pop from double-triggering the generic press sound/haptic, and preserved an existing held compression loop during multi-touch pops.
 
 ## Complete
 

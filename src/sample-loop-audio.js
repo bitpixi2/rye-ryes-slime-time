@@ -12,7 +12,10 @@ export const SAMPLE_LOOP_PROFILES = Object.freeze({
   }),
   bingsu: Object.freeze({
     file: '/audio/puffy-foam-squish.mp3',
+    files: Object.freeze(['/audio/puffy-foam-squish.mp3', '/audio/puffy-step-squish.mp3']),
     volumeCap: 0.18,
+    popFiles: Object.freeze(['/audio/puffy-pop-a.mp3', '/audio/puffy-pop-b.mp3']),
+    popVolumeCap: 0.44,
   }),
   putty: Object.freeze({
     file: '/audio/liquidy-gel-slime.mp3',
@@ -20,9 +23,15 @@ export const SAMPLE_LOOP_PROFILES = Object.freeze({
   }),
 });
 
-export const DISCOVERY_SAMPLE = Object.freeze({
-  file: '/audio/type-discovery-1s.mp3',
-  volumeCap: 0.045,
+export const UI_SAMPLE_PROFILES = Object.freeze({
+  typeSelection: Object.freeze({
+    files: Object.freeze(['/audio/type-select-a.mp3', '/audio/type-select-b.mp3']),
+    volumeCap: 0.24,
+  }),
+  colorSelection: Object.freeze({
+    file: '/audio/color-select-soft.mp3',
+    volumeCap: 0.34,
+  }),
 });
 
 const round = (value) => Number(value.toFixed(3));
@@ -54,7 +63,17 @@ export class SampleLoopAudio {
     this.base = null;
     this.baseTracks = [];
     this.accent = null;
-    this.discoveryTrack = null;
+    this.popTracks = [];
+    this.popAlternateIndex = -1;
+    this.activePopFile = null;
+    this.popPlaybackCount = 0;
+    this.popFallbackCount = 0;
+    this.typeSelectionTracks = [];
+    this.typeSelectionIndex = -1;
+    this.activeTypeSelectionFile = null;
+    this.typeSelectionCueCount = 0;
+    this.colorSelectionTrack = null;
+    this.colorSelectionCueCount = 0;
     this.started = false;
     this.unlocked = false;
     this.disposed = false;
@@ -66,9 +85,9 @@ export class SampleLoopAudio {
     this.lastPressAt = -Infinity;
     this.startCount = 0;
     this.pressAccentCount = 0;
-    this.discoveryCueCount = 0;
     this.playbackErrors = 0;
     this.prepareModeTracks();
+    this.prepareUiTracks();
   }
 
   createTrack(source, { loop = false } = {}) {
@@ -88,6 +107,13 @@ export class SampleLoopAudio {
     this.accent = this.profile.pressFile
       ? this.createTrack(this.profile.pressFile)
       : null;
+    this.popTracks = (this.profile.popFiles || []).map((file) => this.createTrack(file));
+  }
+
+  prepareUiTracks() {
+    this.typeSelectionTracks = UI_SAMPLE_PROFILES.typeSelection.files
+      .map((file) => this.createTrack(file));
+    this.colorSelectionTrack = this.createTrack(UI_SAMPLE_PROFILES.colorSelection.file);
   }
 
   releaseTrack(track) {
@@ -102,22 +128,33 @@ export class SampleLoopAudio {
     track.load?.();
   }
 
-  playTrack(track, { unlockBase = false } = {}) {
-    if (!track || this.disposed) return false;
+  playTrack(track, { unlockBase = false, onError = null } = {}) {
+    let errorHandled = false;
+    const handleError = (error) => {
+      // Pausing a still-loading media element intentionally raises AbortError;
+      // it is not a broken asset and should not trigger a late fallback sound.
+      if (error?.name === 'AbortError') return;
+      if (errorHandled) return;
+      errorHandled = true;
+      this.playbackErrors += 1;
+      onError?.();
+    };
+    if (!track || this.disposed) {
+      handleError();
+      return false;
+    }
     try {
       const result = track.play?.();
       if (result?.then) {
         result.then(() => {
           if (unlockBase) this.unlocked = true;
-        }).catch(() => {
-          this.playbackErrors += 1;
-        });
-      } else if (unlockBase) {
-        this.unlocked = true;
+        }).catch(handleError);
+      } else {
+        if (unlockBase) this.unlocked = true;
       }
       return true;
-    } catch {
-      this.playbackErrors += 1;
+    } catch (error) {
+      handleError(error);
       return false;
     }
   }
@@ -127,6 +164,7 @@ export class SampleLoopAudio {
     if (mode === this.mode) return true;
     this.baseTracks.forEach((track) => this.releaseTrack(track));
     this.releaseTrack(this.accent);
+    this.popTracks.forEach((track) => this.releaseTrack(track));
     this.mode = mode;
     this.profile = SAMPLE_LOOP_PROFILES[mode];
     this.alternateIndex = -1;
@@ -134,6 +172,9 @@ export class SampleLoopAudio {
     this.base = null;
     this.baseTracks = [];
     this.accent = null;
+    this.popTracks = [];
+    this.popAlternateIndex = -1;
+    this.activePopFile = null;
     this.started = false;
     this.unlocked = false;
     this.activity = 0;
@@ -200,8 +241,7 @@ export class SampleLoopAudio {
   }
 
   /**
-   * Adds a brief press emphasis. Bingsu gets its own crunchy one-shot; the
-   * other types briefly swell their selected loop without stacking samples.
+   * Adds a brief press emphasis without stacking extra synthesized sounds.
    */
   press(intensity = 1) {
     if (this.disposed) return false;
@@ -224,24 +264,75 @@ export class SampleLoopAudio {
     return this.playTrack(this.accent);
   }
 
-  playDiscovery(intensity = 1) {
-    if (this.disposed || this.muted) return false;
-    if (!this.discoveryTrack) this.discoveryTrack = this.createTrack(DISCOVERY_SAMPLE.file);
-    if (!this.discoveryTrack) return false;
-    this.discoveryTrack.pause?.();
+  playTypeSelection(intensity = 1) {
+    if (this.disposed || this.muted || !this.typeSelectionTracks.length) return false;
+    this.typeSelectionTracks.forEach((track) => {
+      if (!track) return;
+      track.volume = 0;
+      track.pause?.();
+    });
+    this.typeSelectionIndex = (this.typeSelectionIndex + 1) % this.typeSelectionTracks.length;
+    const track = this.typeSelectionTracks[this.typeSelectionIndex];
+    if (!track) return false;
     try {
-      this.discoveryTrack.currentTime = 0;
+      track.currentTime = 0;
     } catch {
-      // The cue can still play from its current position if seeking is denied.
+      // The short cue can still play if metadata has not finished loading.
     }
-    this.discoveryTrack.volume = DISCOVERY_SAMPLE.volumeCap
+    track.volume = UI_SAMPLE_PROFILES.typeSelection.volumeCap
       * clamp(Number.isFinite(intensity) ? intensity : 1, 0.2, 1);
-    this.discoveryCueCount += 1;
-    return this.playTrack(this.discoveryTrack);
+    this.activeTypeSelectionFile = UI_SAMPLE_PROFILES.typeSelection.files[this.typeSelectionIndex];
+    this.typeSelectionCueCount += 1;
+    return this.playTrack(track);
   }
 
-  discovery(intensity = 1) {
-    return this.playDiscovery(intensity);
+  playColorSelection(intensity = 1) {
+    if (this.disposed || this.muted || !this.colorSelectionTrack) return false;
+    this.colorSelectionTrack.pause?.();
+    try {
+      this.colorSelectionTrack.currentTime = 0;
+    } catch {
+      // The short cue can still play if metadata has not finished loading.
+    }
+    this.colorSelectionTrack.volume = UI_SAMPLE_PROFILES.colorSelection.volumeCap
+      * clamp(Number.isFinite(intensity) ? intensity : 1, 0.2, 1);
+    this.colorSelectionCueCount += 1;
+    return this.playTrack(this.colorSelectionTrack);
+  }
+
+  playPop(onFailure) {
+    let fallbackHandled = false;
+    const fallback = () => {
+      if (fallbackHandled) return;
+      fallbackHandled = true;
+      this.popFallbackCount += 1;
+      onFailure?.();
+    };
+    if (this.disposed || this.muted || !this.profile.popFiles?.length || !this.popTracks.length) {
+      if (!this.muted) fallback();
+      return false;
+    }
+    this.popAlternateIndex = (this.popAlternateIndex + 1) % this.popTracks.length;
+    const track = this.popTracks[this.popAlternateIndex];
+    if (!track || track.error) {
+      fallback();
+      return false;
+    }
+    this.popTracks.forEach((candidate, index) => {
+      if (!candidate || index === this.popAlternateIndex) return;
+      candidate.volume = 0;
+      candidate.pause?.();
+    });
+    track.pause?.();
+    try {
+      track.currentTime = 0;
+    } catch {
+      // The pop remains useful even if metadata is not ready for seeking.
+    }
+    track.volume = this.profile.popVolumeCap || 0.4;
+    this.activePopFile = this.profile.popFiles[this.popAlternateIndex];
+    this.popPlaybackCount += 1;
+    return this.playTrack(track, { onError: fallback });
   }
 
   setMuted(muted) {
@@ -254,9 +345,10 @@ export class SampleLoopAudio {
         this.accent.volume = 0;
         this.accent.pause?.();
       }
-      if (this.discoveryTrack) {
-        this.discoveryTrack.volume = 0;
-        this.discoveryTrack.pause?.();
+      for (const track of [...this.popTracks, ...this.typeSelectionTracks, this.colorSelectionTrack]) {
+        if (!track) continue;
+        track.volume = 0;
+        track.pause?.();
       }
     }
     return this.muted;
@@ -294,7 +386,13 @@ export class SampleLoopAudio {
     this.targetVolume = 0;
     this.pressBoost = 0;
     this.pressBoostRemaining = 0;
-    for (const track of [...new Set([...this.baseTracks, this.accent, this.discoveryTrack])]) {
+    for (const track of [...new Set([
+      ...this.baseTracks,
+      ...this.popTracks,
+      ...this.typeSelectionTracks,
+      this.accent,
+      this.colorSelectionTrack,
+    ])]) {
       if (!track) continue;
       track.volume = 0;
       track.pause?.();
@@ -327,7 +425,17 @@ export class SampleLoopAudio {
       currentVolume: round(this.currentVolume),
       startCount: this.startCount,
       pressAccentCount: this.pressAccentCount,
-      discoveryCueCount: this.discoveryCueCount,
+      popSampleFiles: this.profile.popFiles || null,
+      selectedPopFile: this.activePopFile,
+      popAlternateIndex: this.profile.popFiles?.length ? this.popAlternateIndex : null,
+      popPlaybackCount: this.popPlaybackCount,
+      popFallbackCount: this.popFallbackCount,
+      typeSelectionFiles: UI_SAMPLE_PROFILES.typeSelection.files,
+      selectedTypeSelectionFile: this.activeTypeSelectionFile,
+      typeSelectionIndex: this.typeSelectionIndex,
+      typeSelectionCueCount: this.typeSelectionCueCount,
+      colorSelectionFile: UI_SAMPLE_PROFILES.colorSelection.file,
+      colorSelectionCueCount: this.colorSelectionCueCount,
       playbackErrors: this.playbackErrors,
     };
   }
@@ -336,12 +444,16 @@ export class SampleLoopAudio {
     if (this.disposed) return;
     this.stop();
     this.baseTracks.forEach((track) => this.releaseTrack(track));
+    this.popTracks.forEach((track) => this.releaseTrack(track));
+    this.typeSelectionTracks.forEach((track) => this.releaseTrack(track));
     this.releaseTrack(this.accent);
-    this.releaseTrack(this.discoveryTrack);
+    this.releaseTrack(this.colorSelectionTrack);
     this.base = null;
     this.baseTracks = [];
+    this.popTracks = [];
+    this.typeSelectionTracks = [];
     this.accent = null;
-    this.discoveryTrack = null;
+    this.colorSelectionTrack = null;
     this.disposed = true;
   }
 }
