@@ -2635,16 +2635,16 @@ function dismissStartupSplash(event) {
   // Keep audio startup inside this first trusted gesture for mobile browsers.
   audio.init();
   audio.sparkle('welcome');
-  haptic([7, 18, 11], 1.2);
+  haptic([5, 16, 7], 1.1);
   state.startupSplashVisible = false;
-  state.startupSplashPhase = 'splatting';
-  splashGate.classList.add('is-splatting');
+  state.startupSplashPhase = 'fading';
+  splashGate.classList.add('is-fading');
   splashGate.inert = true;
   splashGate.setAttribute('aria-hidden', 'true');
   window.setTimeout(() => {
     splashGate.hidden = true;
     state.startupSplashPhase = 'hidden';
-  }, prefersReducedMotion ? 0 : 740);
+  }, prefersReducedMotion ? 0 : 1100);
 }
 
 previousStepButton.addEventListener('click', () => moveStep(-1));
