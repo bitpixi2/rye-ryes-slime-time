@@ -91,6 +91,7 @@ const themes = {
 const state = {
   started: true,
   startupSplashVisible: true,
+  startupSplashPhase: 'ready',
   playMode: false,
   step: 'type',
   typeChosen: false,
@@ -2636,12 +2637,14 @@ function dismissStartupSplash(event) {
   audio.sparkle('welcome');
   haptic([7, 18, 11], 1.2);
   state.startupSplashVisible = false;
-  splashGate.classList.add('is-leaving');
+  state.startupSplashPhase = 'splatting';
+  splashGate.classList.add('is-splatting');
   splashGate.inert = true;
   splashGate.setAttribute('aria-hidden', 'true');
   window.setTimeout(() => {
     splashGate.hidden = true;
-  }, prefersReducedMotion ? 0 : 440);
+    state.startupSplashPhase = 'hidden';
+  }, prefersReducedMotion ? 0 : 740);
 }
 
 previousStepButton.addEventListener('click', () => moveStep(-1));
@@ -2810,6 +2813,7 @@ window.render_game_to_text = () => JSON.stringify({
   },
   navigation: {
     startupSplashVisible: state.startupSplashVisible,
+    startupSplashPhase: state.startupSplashPhase,
     typeChosen: state.typeChosen,
     nextArrowVisible: !nextStepButton.hidden,
     finalArrowAction: 'fill the screen',
