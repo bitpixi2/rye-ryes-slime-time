@@ -43,15 +43,16 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 }
 
 .wordmark {
-  width: 44px;
   height: 44px;
-  flex: 0 0 44px;
+  flex: 0 1 auto;
+  min-width: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 14px;
   padding: 0;
   background: transparent;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   cursor: pointer;
   transition: transform .15s ease;
 }
@@ -62,6 +63,15 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   height: 42px;
   object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(55, 26, 72, .2));
+}
+
+.wordmark-title {
+  color: #482365;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -.45px;
+  white-space: nowrap;
 }
 
 .wordmark:active { transform: scale(.92) rotate(-2deg); }
@@ -264,6 +274,8 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 .mix-preview { background: #6c2eb3; }
 
 @media (max-width: 370px) {
+  .wordmark { gap: 5px; }
+  .wordmark-title { font-size: 12.5px; }
   .choice-row { justify-content: flex-start; padding-inline: 12px; scroll-padding-inline: 12px; }
 }
 
@@ -301,8 +313,9 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 @media (min-width: 760px) {
   .app-shell { grid-template-rows: 66px minmax(0, 1fr) auto; }
   .topbar { padding-inline: 26px; }
-  .wordmark { width: 50px; height: 50px; flex-basis: 50px; }
+  .wordmark { height: 50px; }
   .wordmark-logo { width: 48px; height: 48px; }
+  .wordmark-title { font-size: 16px; letter-spacing: -.55px; }
   .splash-gate { padding-top: 66px; }
   .splash-logo-orbit { width: min(39vw, 390px); }
   .maker-panel { max-height: 244px; padding-bottom: 18px; }
@@ -314,8 +327,9 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
 @media (max-height: 650px) {
   .app-shell { grid-template-rows: 50px minmax(0, 1fr) auto; }
   .topbar { padding-block: 5px; }
-  .wordmark { width: 40px; height: 40px; flex-basis: 40px; }
+  .wordmark { height: 40px; }
   .wordmark-logo { width: 38px; height: 38px; }
+  .wordmark-title { font-size: 13px; }
   .splash-gate { padding-top: 50px; padding-bottom: 100px; }
   .splash-logo-orbit { width: min(42vh, 270px); }
   .icon-button { width: 34px; height: 34px; }

@@ -2634,7 +2634,7 @@ function dismissStartupSplash(event) {
   event?.stopPropagation();
   // Keep audio startup inside this first trusted gesture for mobile browsers.
   audio.init();
-  audio.sparkle('welcome');
+  sampleLoops.playTypeSelection();
   haptic([5, 16, 7], 1.1);
   state.startupSplashVisible = false;
   state.startupSplashPhase = 'fading';

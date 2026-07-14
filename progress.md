@@ -78,6 +78,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Added a first-launch animated logo splash over the hero. It stays precisely centered while gently rotating and wobbling, consumes the first tap/click without selecting the UI underneath, initializes mobile Web Audio with a short welcome sparkle, then dissolves and stays gone for the session. The screen remains minimal with no instruction pill.
 - Tightened the two Puffy-Pop one-shots to 295ms with short entry/exit fades, removed obsolete missing discovery-audio code, prevented a completed pop from double-triggering the generic press sound/haptic, and preserved an existing held compression loop during multi-touch pops.
 - Simplified the first logo transition after motion feedback: the badge now makes one delicate 2.5-degree rocking rotation and, when pressed, fades slowly for about one second with no squash, blur, droplets, or jitter. The same first gesture still unlocks mobile audio.
+- Added the plain `Rye Rye’s Slime Time` title beside the small upper-left badge. Pressing the large splash badge now plays the first alternating type-selection cue instead of a separate welcome sparkle, so mobile audio unlocks without layered sounds.
 
 ## Complete
 
