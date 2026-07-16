@@ -2517,9 +2517,8 @@ function setStep(step, { feedback = true } = {}) {
   stepCount.textContent = `STEP ${stepIndex + 1} OF ${stepOrder.length}`;
   stepName.textContent = stepDetails[step].name;
   previousStepButton.disabled = stepIndex === 0;
-  const waitingForType = step === 'type' && !state.typeChosen;
-  nextStepButton.hidden = waitingForType || stepIndex === stepOrder.length - 1;
-  nextStepButton.disabled = waitingForType || stepIndex === stepOrder.length - 1;
+  nextStepButton.hidden = stepIndex === stepOrder.length - 1;
+  nextStepButton.disabled = stepIndex === stepOrder.length - 1;
   nextStepLabel.textContent = step === 'type' ? 'COLORS' : step === 'base' ? 'TOPPINGS' : step === 'mix' ? 'FILL SCREEN' : 'DONE';
   previousStepButton.setAttribute('aria-label', stepIndex === 0 ? 'No previous step' : `Back to ${stepDetails[stepOrder[stepIndex - 1]].shortName}`);
   nextStepButton.setAttribute('aria-label', stepIndex === stepOrder.length - 1 ? 'All steps complete' : `Next step: ${stepDetails[stepOrder[stepIndex + 1]].shortName}`);
@@ -2816,6 +2815,7 @@ window.render_game_to_text = () => JSON.stringify({
     startupSplashPhase: state.startupSplashPhase,
     typeChosen: state.typeChosen,
     nextArrowVisible: !nextStepButton.hidden,
+    nextArrowEnabled: !nextStepButton.disabled,
     finalArrowAction: 'fill the screen',
   },
   toppings: {

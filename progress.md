@@ -82,6 +82,9 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Removed all continuous movement from the large splash badge after the gentle rotation still appeared jittery on-device. The logo is now completely static and centered until pressed, then the full splash fades evenly with no independent logo transform.
 - Restored motion as an explicit slow full turn: the centered splash badge now rotates 360 degrees at a constant speed over 36 seconds, with no rocking or easing. Clicking immediately pauses the rotation before the existing slow fade and selection cue.
 - Softened Glowy very slightly by lowering only the fluid renderer brightness from 0.86 to 0.80. Bloom remains disabled, preserving the luminous color mixing while reducing the brightest white-looking highlights.
+- Removed the `Swipe for more →` helper from the type chooser while retaining the same four-card scrolling layout.
+- Made Puffy-Pop surprises lightweight and repeatable: each bed receives one of four precomputed patterns assigning individual puffs to pop after 1, 2, or 3 presses. A different pattern is assigned to the batch on each full reload, avoiding per-press randomness and extra simulation work.
+- Restored the first-page Colors/Next arrow as visible and enabled immediately. A child can skip type selection and continue with Glowy as the default, or select another type first.
 
 ## Complete
 

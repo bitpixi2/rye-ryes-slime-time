@@ -3,6 +3,12 @@ import * as THREE from 'three';
 const DEFAULT_THEME = { dyePalette: ['#ff3f91', '#b03df2', '#5a16c8', '#28d8ca'], base: '#58148f', accent: '#ff4d9d' };
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const damp = (current, target, sharpness, dt) => current + (target - current) * (1 - Math.exp(-sharpness * dt));
+const POP_THRESHOLD_PATTERNS = Object.freeze([
+  Object.freeze([1, 3, 2, 2, 3, 1, 3, 2, 1, 2, 3, 2]),
+  Object.freeze([2, 1, 3, 2, 1, 2, 3, 3, 2, 1, 2, 3]),
+  Object.freeze([3, 2, 1, 3, 2, 2, 1, 3, 2, 3, 1, 2]),
+  Object.freeze([2, 3, 2, 1, 3, 2, 1, 2, 3, 1, 3, 2]),
+]);
 
 export class BingsuSlime3DEngine {
   constructor(canvas, { getTheme = () => DEFAULT_THEME, isMobile = false } = {}) {
@@ -17,6 +23,7 @@ export class BingsuSlime3DEngine {
     this.popCount = 0;
     this.reloadCycle = 0;
     this.reloadStart = null;
+    this.popPatternIndex = Math.floor(Math.random() * POP_THRESHOLD_PATTERNS.length);
     this.flowX = 0;
     this.flowY = 0;
     this.flowTwist = 0;
@@ -73,6 +80,7 @@ export class BingsuSlime3DEngine {
           compression: 0,
           targetCompression: 0,
           hitCount: 0,
+          popThreshold: 3,
           state: 'active',
           popAge: 0,
           popLift: 0,
@@ -82,6 +90,7 @@ export class BingsuSlime3DEngine {
         });
       }
     }
+    this.applyPopPattern(this.popPatternIndex);
 
     this.cellGeometry = new THREE.SphereGeometry(1, this.isMobile ? 12 : 16, this.isMobile ? 8 : 11);
     this.cellMaterials = Array.from({ length: 4 }, () => new THREE.MeshStandardMaterial({ roughness: 0.66, metalness: 0 }));
@@ -119,6 +128,15 @@ export class BingsuSlime3DEngine {
     this.floorMaterial.color.copy(floorColor);
     this.cellMaterials.forEach((material, index) => material.color.copy(this.palette[index % this.palette.length]));
     this.beadMaterial.color.set(theme.accent || DEFAULT_THEME.accent);
+  }
+
+  applyPopPattern(patternIndex) {
+    this.popPatternIndex = patternIndex % POP_THRESHOLD_PATTERNS.length;
+    const pattern = POP_THRESHOLD_PATTERNS[this.popPatternIndex];
+    this.cells.forEach((cell, index) => {
+      const shuffledIndex = (index * 5 + Math.floor(index / this.columns) * 3) % pattern.length;
+      cell.popThreshold = pattern[shuffledIndex];
+    });
   }
 
   resize(width, height) {
@@ -193,13 +211,25 @@ export class BingsuSlime3DEngine {
     if (!target || target.distance > 0.22) return null;
     target.cell.hitCount += 1;
     target.cell.targetCompression = 1;
-    if (target.cell.hitCount < 3) return { popped: false, index: target.index, hits: target.cell.hitCount };
+    if (target.cell.hitCount < target.cell.popThreshold) {
+      return {
+        popped: false,
+        index: target.index,
+        hits: target.cell.hitCount,
+        threshold: target.cell.popThreshold,
+      };
+    }
     target.cell.state = 'popping';
     target.cell.popAge = 0;
     target.cell.popLift = 0;
     target.cell.popVelocity = 1.15;
     this.popCount += 1;
-    return { popped: true, index: target.index, hits: target.cell.hitCount };
+    return {
+      popped: true,
+      index: target.index,
+      hits: target.cell.hitCount,
+      threshold: target.cell.popThreshold,
+    };
   }
 
   updateInstances() {
@@ -293,6 +323,8 @@ export class BingsuSlime3DEngine {
     if (this.reloadStart === null && this.cells.every((cell) => cell.state === 'gone')) {
       this.reloadStart = this.elapsed + 1.1;
       this.reloadCycle += 1;
+      const patternStep = 1 + (this.reloadCycle % (POP_THRESHOLD_PATTERNS.length - 1));
+      this.applyPopPattern((this.popPatternIndex + patternStep) % POP_THRESHOLD_PATTERNS.length);
       this.cells.forEach((cell, index) => { cell.respawnAt = this.reloadStart + index * 0.045; });
     }
     if (this.reloadStart !== null && this.cells.every((cell) => cell.state === 'active')) this.reloadStart = null;
@@ -306,8 +338,13 @@ export class BingsuSlime3DEngine {
 
   get popMetrics() {
     const count = (state) => this.cells.filter((cell) => cell.state === state).length;
+    const thresholdCounts = { 1: 0, 2: 0, 3: 0 };
+    this.cells.forEach((cell) => { thresholdCounts[cell.popThreshold] += 1; });
     return {
-      pressesPerPop: 3,
+      pressesPerPop: 'preassigned 1, 2, or 3 presses',
+      patternIndex: this.popPatternIndex,
+      patternCount: POP_THRESHOLD_PATTERNS.length,
+      thresholdCounts,
       poppedTotal: this.popCount,
       remaining: count('active') + count('respawning'),
       popping: count('popping'),
