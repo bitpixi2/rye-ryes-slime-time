@@ -1823,7 +1823,7 @@ function fluidConfig() {
     hover: false,
     backgroundColor: theme.base,
     transparent: false,
-    brightness: 0.86,
+    brightness: 0.8,
     bloom: false,
     sunrays: false,
   };

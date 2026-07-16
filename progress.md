@@ -81,6 +81,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Added the plain `Rye Rye’s Slime Time` title beside the small upper-left badge. Pressing the large splash badge now plays the first alternating type-selection cue instead of a separate welcome sparkle, so mobile audio unlocks without layered sounds.
 - Removed all continuous movement from the large splash badge after the gentle rotation still appeared jittery on-device. The logo is now completely static and centered until pressed, then the full splash fades evenly with no independent logo transform.
 - Restored motion as an explicit slow full turn: the centered splash badge now rotates 360 degrees at a constant speed over 36 seconds, with no rocking or easing. Clicking immediately pauses the rotation before the existing slow fade and selection cue.
+- Softened Glowy very slightly by lowering only the fluid renderer brightness from 0.86 to 0.80. Bloom remains disabled, preserving the luminous color mixing while reducing the brightest white-looking highlights.
 
 ## Complete
 
