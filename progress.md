@@ -85,6 +85,9 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Removed the `Swipe for more →` helper from the type chooser while retaining the same four-card scrolling layout.
 - Made Puffy-Pop surprises lightweight and repeatable: each bed receives one of four precomputed patterns assigning individual puffs to pop after 1, 2, or 3 presses. A different pattern is assigned to the batch on each full reload, avoiding per-press randomness and extra simulation work.
 - Restored the first-page Colors/Next arrow as visible and enabled immediately. A child can skip type selection and continue with Glowy as the default, or select another type first.
+- Removed the secondary instructional copy from all three chooser sections (`Pick how it feels`, `Choose your colors`, `Tap a palette`, `Toss in the fun`, and the five-tap note). Added 7px top and 12px bottom padding inside every card scroller so selected rings and shadows no longer clip.
+- Slimmed card highlighting so neighboring choices remain visually separate: selected purple/pink rings are now 2px instead of 4px, card keyboard-focus outlines are 2px with a 1px offset, and the selected shadow is tighter. Large navigation controls retain their stronger focus treatment.
+- Expanded Puffy-Pop thresholds to a genuinely randomized 1–5 presses per puff. Thresholds are generated once per batch (and again only after a full reload), guarantee every threshold appears, and are weighted toward 4–5 presses so extended puffy sounds are more common than pops.
 
 ## Complete
 
