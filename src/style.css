@@ -120,6 +120,15 @@ button:focus-visible { outline: 4px solid #1d94ff; outline-offset: 3px; }
   width: 100%;
   height: 100%;
   object-fit: contain;
+  transform-origin: 50% 50%;
+  animation: splash-slow-turn 36s linear infinite;
+}
+
+.splash-gate.is-fading .splash-logo { animation-play-state: paused; }
+
+@keyframes splash-slow-turn {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .top-actions { display: flex; gap: 8px; }

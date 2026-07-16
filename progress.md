@@ -80,6 +80,7 @@ Original prompt: New project please just a simple mobile-friendly slime creator 
 - Simplified the first logo transition after motion feedback: the badge now makes one delicate 2.5-degree rocking rotation and, when pressed, fades slowly for about one second with no squash, blur, droplets, or jitter. The same first gesture still unlocks mobile audio.
 - Added the plain `Rye Rye’s Slime Time` title beside the small upper-left badge. Pressing the large splash badge now plays the first alternating type-selection cue instead of a separate welcome sparkle, so mobile audio unlocks without layered sounds.
 - Removed all continuous movement from the large splash badge after the gentle rotation still appeared jittery on-device. The logo is now completely static and centered until pressed, then the full splash fades evenly with no independent logo transform.
+- Restored motion as an explicit slow full turn: the centered splash badge now rotates 360 degrees at a constant speed over 36 seconds, with no rocking or easing. Clicking immediately pauses the rotation before the existing slow fade and selection cue.
 
 ## Complete
 
